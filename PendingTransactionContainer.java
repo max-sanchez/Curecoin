@@ -16,13 +16,19 @@ import java.util.*;
 public class PendingTransactionContainer
 {
     public ArrayList<String> pendingTransactions;
+    private CurecoinDatabaseMaster databaseMaster;
 
+    //ArrayList holding objects that pair addresses with their pending transaction amounts, so transactions above an account's spendable balance are rejected.
+    public ArrayList<StringLongPair> accountBalanceDeltaTables;
     /**
-     * Constructor for PendingTransactionContainer sets up required ArrayList for holding transactions
+     * Constructor for PendingTransactionContainer sets up required ArrayList for holding transactions. The database manager object is passed in, for checking balances
+     * when a transaction is being added.
      */
-    public PendingTransactionContainer()
+    public PendingTransactionContainer(CurecoinDatabaseMaster databaseMaster)
     {
+        this.databaseMaster = databaseMaster;
         this.pendingTransactions = new ArrayList<String>();
+        this.accountBalanceDeltaTables = new ArrayList<StringLongPair>();
     }
 
     /**
@@ -30,6 +36,7 @@ public class PendingTransactionContainer
      * Rejects duplicate transactions.
      * Transaction format: 
      * InputAddress;InputAmount;OutputAddress1;OutputAmount1;OutputAddress2;OutputAmount2...;SignatureData;SignatureIndex
+     * Additional work in the future on this method will include keeping track of signature indexes and prioritizing lower-index transactions.
      * 
      * @param transaction Transaction to add
      * 
@@ -37,20 +44,60 @@ public class PendingTransactionContainer
      */
     public boolean addTransaction(String transaction)
     {
-        for (int i = 0; i < pendingTransactions.size(); i++)
+        try
         {
-            if (pendingTransactions.get(i).equals(transaction))
+            for (int i = 0; i < pendingTransactions.size(); i++)
             {
+                if (pendingTransactions.get(i).equals(transaction))
+                {
+                    return false;
+                }
+            }
+            MerkleAddressUtility merkleAddressUtility = new MerkleAddressUtility();
+            if (!TransactionUtility.isTransactionValid(transaction))
+            {
+                System.out.println("Throwing out a transaction deemed invalid");
                 return false;
             }
-        }
-        MerkleAddressUtility merkleAddressUtility = new MerkleAddressUtility();
-        if (!TransactionUtility.isTransactionValid(transaction))
+            String[] transactionParts = transaction.split(";");
+            //We need to check to make sure the input address isn't sending coins they don't own.
+            String inputAddress = transactionParts[0];
+            long inputAmount = Long.parseLong(transactionParts[1]);
+            //Check for the outstanding outgoing amount for this address
+            long outstandingOutgoingAmount = 0L;
+            int indexOfDelta = -1;
+            for (int i = 0; i < accountBalanceDeltaTables.size(); i++)
+            {
+                if (accountBalanceDeltaTables.get(i).stringToHold.equals(inputAddress))
+                {
+                    outstandingOutgoingAmount = accountBalanceDeltaTables.get(i).longToHold;
+                    indexOfDelta = i;
+                    break;
+                }
+            }
+            long previousBalance = databaseMaster.getAddressBalance(inputAddress);
+            if (previousBalance < inputAmount + outstandingOutgoingAmount)
+            {
+                System.out.println("Account " + inputAddress + " tried to spend " + inputAmount + " but only had " + (previousBalance - outstandingOutgoingAmount) + " coins.");
+                return false; //Account does not have the coins to spend!
+            }
+            if (indexOfDelta >= 0)
+            {
+                accountBalanceDeltaTables.get(indexOfDelta).longToHold += inputAmount;
+            }
+            else
+            {
+                accountBalanceDeltaTables.add(new StringLongPair(inputAddress, inputAmount)); //No existing entry in the pending delta tables, so we create an ew one
+            }
+            pendingTransactions.add(transaction); //Can only get to here if the transaction is valid, accounted for, and the balance checks out. 
+            System.out.println("Added transaction " + transaction.substring(0, 20) + "..." + transaction.substring(transaction.length() - 20, transaction.length()));
+        } catch (Exception e)
         {
+            System.out.println("An exception has occurred...");
+            e.printStackTrace();
             return false;
+            //e.printStackTrace();
         }
-        pendingTransactions.add(transaction);
-        System.out.println("Added transaction " + transaction.substring(0, 20) + "..." + transaction.substring(transaction.length() - 20, transaction.length()));
         return true;
     }
 
@@ -60,6 +107,7 @@ public class PendingTransactionContainer
     public void reset()
     {
         pendingTransactions = new ArrayList<String>();
+        accountBalanceDeltaTables = new ArrayList<StringLongPair>();
     }
 
     /**

@@ -266,7 +266,7 @@ public class Blockchain
                 if (chains.get(i).get(chains.get(i).size() - 1).blockHash.equals(block.blockHash))
                 {
                     //Duplicate block; block has already been added. This happens all the time, as multiple peers all broadcast the same block.
-                    System.out.println("Duplicate block!");
+                    System.out.println("Duplicate block received from peer");
                     return false;
                 }
             }

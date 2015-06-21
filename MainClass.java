@@ -22,10 +22,10 @@ public class MainClass
 {
     public static void main(String[] args)
     {
-        //launch();
+        launch();
         //Start of the program, initialize Database object
         CurecoinDatabaseMaster databaseMaster = new CurecoinDatabaseMaster("database");
-        PendingTransactionContainer pendingTransactionContainer = new PendingTransactionContainer();
+        PendingTransactionContainer pendingTransactionContainer = new PendingTransactionContainer(databaseMaster);
         PeerNetwork peerNetwork = new PeerNetwork();
         peerNetwork.start();
         RPC rpcAgent = new RPC();
@@ -38,6 +38,7 @@ public class MainClass
             try
             {
                 PrintWriter out = new PrintWriter(peerFile);
+                out.println("155.94.254.14:8015");
                 /*
                  * In future networks, these will route to servers running the daemon. For now, it's just the above IP.
                  */
@@ -60,7 +61,7 @@ public class MainClass
                 int port = Integer.parseInt(combo.substring(combo.indexOf(":") + 1));
                 peerNetwork.connectToPeer(host, port);
             }
-            Thread.sleep(4000);
+            Thread.sleep(2000);
         } catch (Exception e)
         {
             e.printStackTrace();
@@ -70,6 +71,7 @@ public class MainClass
         int topBlock = 0;
         ArrayList<String> allBroadcastTransactions = new ArrayList<String>();
         ArrayList<String> allBroadcastBlocks = new ArrayList<String>();
+        boolean catchupMode = true;
         while (true) 
         {
             //Look for new data from peers
@@ -130,7 +132,7 @@ public class MainClass
                             for (int k = 0; k < allBroadcastBlocks.size(); k++)
                             {
                                 //Likely due to P2P reverb / echo
-                                System.out.println("Have seen block before... not adding.");
+                                //System.out.println("Have seen block before... not adding.");
                                 if (parts[1].equals(allBroadcastBlocks.get(k)))
                                 {
                                     hasSeenBefore = true;
@@ -144,7 +146,7 @@ public class MainClass
                                 System.out.println(parts[1]);
                                 allBroadcastBlocks.add(parts[1]);
                                 Block blockToAdd = new Block(parts[1]);
-                                if (databaseMaster.addBlock(blockToAdd))
+                                if (databaseMaster.addBlock(blockToAdd) && !catchupMode)
                                 {
                                     //If block is new to client and appears valid, rebroadcast
                                     System.out.println("Added block " + blockToAdd.blockNum + " with hash: [" + blockToAdd.blockHash.substring(0, 30) + "..." + blockToAdd.blockHash.substring(blockToAdd.blockHash.length() - 30, blockToAdd.blockHash.length() - 1) + "]");
@@ -263,13 +265,30 @@ public class MainClass
              */
             if (topBlock > currentChainHeight)
             {
+                catchupMode = true;
                 System.out.println("currentChainHeight: " + currentChainHeight);
                 System.out.println("topBlock: " + topBlock);
+                try
+                {
+                    Thread.sleep(300); //Sleep for a bit, wait for responses before requesting more data.
+                } catch (Exception e)
+                {
+                    //If this throws an error, something's terribly off.
+                    System.out.println("MainClass has insomnia.");
+                }
                 for (int i = currentChainHeight; i < topBlock; i++) //Broadcast request for new block(s)
                 {
                     System.out.println("Requesting block " + i + "...");
                     peerNetwork.broadcast("GET_BLOCK " + i);
                 }
+            }
+            else
+            {
+                if (catchupMode)
+                {
+                    System.out.println("Caught up with network."); //Probably won't be seen with block-add spam.
+                }
+                catchupMode = false;
             }
             /*
              * Loop through all of the rpcAgent rpcThreads looking for new queries. Note that setting the response to a string twice in response to one command will cause queue issues.
@@ -323,7 +342,7 @@ public class MainClass
                             rpcAgent.rpcThreads.get(i).response = "Sent " + amount + " from " + address + " to " + destinationAddress;
                         } catch (Exception e)
                         {
-                            e.printStackTrace();
+                            rpcAgent.rpcThreads.get(i).response = "Syntax (don't use < and >): send <amount> <destination>";
                         }
                     }
                     else if (parts[0].equals("submittx"))
@@ -333,6 +352,10 @@ public class MainClass
                             pendingTransactionContainer.addTransaction(parts[0]);
                             peerNetwork.broadcast("TRANSACTION " + parts[1]);
                             rpcAgent.rpcThreads.get(i).response = "Sent raw transaction!";
+                        }
+                        else
+                        {
+                            rpcAgent.rpcThreads.get(i).response = "Non-valid transaction.";
                         }
                     }
                     else if (parts[0].equals("submitcert"))
@@ -358,77 +381,85 @@ public class MainClass
                         long target = Long.MAX_VALUE/(databaseMaster.getDifficulty()/2); //Difficulty and target have an inverse relationship.
                         if (lowestScore < target)
                         {
-                            //Great, certificate is a winning certificate!
-                            //Gather all of the transactions from pendingTransactionContainer, check them.
-                            ArrayList<String> allPendingTransactions = pendingTransactionContainer.pendingTransactions;
-                            System.out.println("Inital pending pool size: " + allPendingTransactions.size());
-                            allPendingTransactions = TransactionUtility.sortTransactionsBySignatureIndex(allPendingTransactions);
-                            System.out.println("Pending pool size after sorting: " + allPendingTransactions.size());
-                            //All transactions have been ordered, and tested for validity. Now, we need to check account balances to make sure transactions are valid. 
-                            //As all transactions are grouped by address, we'll check totals address-by-address
-                            ArrayList<String> finalTransactionList = new ArrayList<String>();
-                            for (int j = 0; j < allPendingTransactions.size(); j++)
+                            try //Some stuff here may throw exceptions
                             {
-                                String transaction = allPendingTransactions.get(j);
-                                String address = transaction.split(";")[0];
-                                //Begin at 0L, and add all outputs to exitBalance
-                                long exitBalance = 0L;
-                                long originalBalance = databaseMaster.getAddressBalance(address);
-                                //Used to keep track of the offset from j while still working on the same address, therefore not going through the entire for-loop again
-                                int counter = 0;
-                                //Previous signature count for an address--in order to ensure transactions use the correct indices
-                                long previousSignatureCount = databaseMaster.getAddressSignatureIndex(address);
-                                boolean foundNewAddress = false;
-                                while (!foundNewAddress && j + counter < allPendingTransactions.size())
+                                //Great, certificate is a winning certificate!
+                                //Gather all of the transactions from pendingTransactionContainer, check them.
+                                ArrayList<String> allPendingTransactions = pendingTransactionContainer.pendingTransactions;
+                                System.out.println("Inital pending pool size: " + allPendingTransactions.size());
+                                allPendingTransactions = TransactionUtility.sortTransactionsBySignatureIndex(allPendingTransactions);
+                                System.out.println("Pending pool size after sorting: " + allPendingTransactions.size());
+                                //All transactions have been ordered, and tested for validity. Now, we need to check account balances to make sure transactions are valid. 
+                                //As all transactions are grouped by address, we'll check totals address-by-address
+                                ArrayList<String> finalTransactionList = new ArrayList<String>();
+                                for (int j = 0; j < allPendingTransactions.size(); j++)
                                 {
-                                    transaction = allPendingTransactions.get(j + counter);
-                                    if (!address.equals(transaction.split(";")[0]))
+                                    String transaction = allPendingTransactions.get(j);
+                                    String address = transaction.split(";")[0];
+                                    //Begin at 0L, and add all outputs to exitBalance
+                                    long exitBalance = 0L;
+                                    long originalBalance = databaseMaster.getAddressBalance(address);
+                                    //Used to keep track of the offset from j while still working on the same address, therefore not going through the entire for-loop again
+                                    int counter = 0;
+                                    //Previous signature count for an address--in order to ensure transactions use the correct indices
+                                    long previousSignatureCount = databaseMaster.getAddressSignatureIndex(address);
+                                    boolean foundNewAddress = false;
+                                    while (!foundNewAddress && j + counter < allPendingTransactions.size())
                                     {
-                                        foundNewAddress = true;
-                                        address = transaction.split(";")[0];
-                                        j = j + counter;
-                                    }
-                                    else
-                                    {
-                                        exitBalance += Long.parseLong(transaction.split(";")[1]); //Element at index 1 (2nd element) is the full output amount!
-                                        if (exitBalance <= originalBalance && previousSignatureCount + 1 == Long.parseLong(transaction.split(";")[transaction.split(";").length - 1])) //Transaction looks good!
+                                        transaction = allPendingTransactions.get(j + counter);
+                                        if (!address.equals(transaction.split(";")[0]))
                                         {
-                                            //Add seemingly-good transaction to the list, and increment previousSignatureCount for signature order assurance. 
-                                            finalTransactionList.add(transaction);
-                                            System.out.println("While making block, added transaction " + transaction);
-                                            previousSignatureCount++;
+                                            foundNewAddress = true;
+                                            address = transaction.split(";")[0];
+                                            j = j + counter;
                                         }
                                         else
                                         {
-                                            System.out.println("Transaction failed final validation...");
-                                            System.out.println("exitBalance: " + exitBalance);
-                                            System.out.println("originalBalance: " + originalBalance);
-                                            System.out.println("previousSignatureCount: " + previousSignatureCount);
-                                            System.out.println("signature count of new tx: " + Long.parseLong(transaction.split(";")[transaction.split(";").length - 1]));
+                                            exitBalance += Long.parseLong(transaction.split(";")[1]); //Element at index 1 (2nd element) is the full output amount!
+                                            if (exitBalance <= originalBalance && previousSignatureCount + 1 == Long.parseLong(transaction.split(";")[transaction.split(";").length - 1])) //Transaction looks good!
+                                            {
+                                                //Add seemingly-good transaction to the list, and increment previousSignatureCount for signature order assurance. 
+                                                finalTransactionList.add(transaction);
+                                                System.out.println("While making block, added transaction " + transaction);
+                                                previousSignatureCount++;
+                                            }
+                                            else
+                                            {
+                                                System.out.println("Transaction failed final validation...");
+                                                System.out.println("exitBalance: " + exitBalance);
+                                                System.out.println("originalBalance: " + originalBalance);
+                                                System.out.println("previousSignatureCount: " + previousSignatureCount);
+                                                System.out.println("signature count of new tx: " + Long.parseLong(transaction.split(";")[transaction.split(";").length - 1]));
+                                            }
+                                            //Counter keeps track of the sub-2nd-layer-for-loop incrementation along the ArrayList. It's kinda 3D.
+                                            counter++;
                                         }
-                                        //Counter keeps track of the sub-2nd-layer-for-loop incrementation along the ArrayList. It's kinda 3D.
-                                        counter++;
                                     }
                                 }
-                            }
-                            //We have the transaction list; now we need to assemble the block. I moved this code into its own method, because it would be ugly here. That method handles steps 5, 6, and 7.
-                            //databaseMaster.getBlockchainLength() doesn't have one added to it to account for starting from 0!
-                            String fullBlock = BlockGenerator.compileBlock(System.currentTimeMillis(), databaseMaster.getBlockchainLength(), databaseMaster.getLatestBlock().blockHash, databaseMaster.getLatestBlock().difficulty, bestNonce, "0000000000000000000000000000000000000000000000000000000000000000", finalTransactionList, certificate, certificate.redeemAddress, addressManager.getDefaultPrivateKey(), databaseMaster.getAddressSignatureIndex(certificate.redeemAddress));
-                            //We finally have the full block. Now to submit it to ourselves...
-                            Block toAdd = new Block(fullBlock);
-                            boolean success = databaseMaster.addBlock(toAdd);
-                            if (success) //The block appears legitimate to ourselves! Send it to others!
+                                //We have the transaction list; now we need to assemble the block. I moved this code into its own method, because it would be ugly here. That method handles steps 5, 6, and 7.
+                                //databaseMaster.getBlockchainLength() doesn't have one added to it to account for starting from 0!
+                                String fullBlock = BlockGenerator.compileBlock(System.currentTimeMillis(), databaseMaster.getBlockchainLength(), databaseMaster.getLatestBlock().blockHash, databaseMaster.getLatestBlock().difficulty, bestNonce, "0000000000000000000000000000000000000000000000000000000000000000", finalTransactionList, certificate, certificate.redeemAddress, addressManager.getDefaultPrivateKey(), databaseMaster.getAddressSignatureIndex(certificate.redeemAddress));
+                                //We finally have the full block. Now to submit it to ourselves...
+                                Block toAdd = new Block(fullBlock);
+                                boolean success = databaseMaster.addBlock(toAdd);
+                                if (success) //The block appears legitimate to ourselves! Send it to others!
+                                {
+                                    System.out.println("Block added to network successfully!");
+                                    peerNetwork.broadcast("BLOCK " + fullBlock);
+                                    pendingTransactionContainer.reset(); //Any transactions left in pendingTransactionContainer that didn't get submitted into the block should be cleared anyway--they probably aren't valid for some reason, likely balance issues.
+                                    addressManager.resetDefaultAddressIndexOffset();
+                                }
+                                else
+                                {
+                                    System.out.println("Block was not added successfully! :(");
+                                }
+                                rpcAgent.rpcThreads.get(i).response = "Successfully submitted block! \nCertificate earned target score " + lowestScore + "\nWhich is below target " + target;
+                            } catch (Exception e)
                             {
-                                System.out.println("Block added to network successfully!");
-                                peerNetwork.broadcast("BLOCK " + fullBlock);
-                                pendingTransactionContainer.reset(); //Any transactions left in pendingTransactionContainer that didn't get submitted into the block should be cleared anyway--they probably aren't valid for some reason, likely balance issues.
-                                addressManager.resetDefaultAddressIndexOffset();
+                                rpcAgent.rpcThreads.get(i).response = "Failure to construct certificate!";
+                                System.out.println("Constructing certificate failed!");
+                                e.printStackTrace();
                             }
-                            else
-                            {
-                                System.out.println("Block was not added successfully! :(");
-                            }
-                            rpcAgent.rpcThreads.get(i).response = "Successfully submitted block! \nCertificate earned target score " + lowestScore + "\nWhich is below target " + target;
                         }
                         else
                         {

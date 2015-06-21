@@ -68,7 +68,8 @@ public class RPCThread extends Thread
             }
         } catch (Exception e)
         {
-            e.printStackTrace();
+            System.out.println("An RPC client has disconnected.");
+            //e.printStackTrace();
         }
     }
 }
