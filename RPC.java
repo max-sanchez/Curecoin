@@ -6,7 +6,6 @@
  * Supports Java 1.7+
  */
 
-import java.io.*;
 import java.net.*;
 import java.util.*;
 
@@ -58,6 +57,7 @@ public class RPC extends Thread
                 rpcThreads.add(new RPCThread(socket.accept()));
                 rpcThreads.get(rpcThreads.size() - 1).start();
             }
+            socket.close();
         } catch (Exception e)
         {
             e.printStackTrace();

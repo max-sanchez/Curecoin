@@ -6,10 +6,8 @@
  * Supports Java 1.7+
  */
 import java.io.*;
-import java.awt.*;
 import java.util.*;
 import java.security.*;
-import org.apache.commons.codec.binary.*;
 import java.nio.file.*;
 /**
  * This class is used to generate Merkle Trees from private keys. The top of the generated Merkle Tree is the Curecoin address of the tree.
@@ -29,11 +27,11 @@ import java.nio.file.*;
  */
 public class MerkleTreeGenLimitless
 {
-    private static final int SIGNATURE_BITS = 100; //Each Lamport Private Key will contain 2x this number of Private Lamport Key Parts. Not used, only for information.
+	public static final int SIGNATURE_BITS = 100; //Each Lamport Private Key will contain 2x this number of Private Lamport Key Parts. Not used, only for information.
     private static final String CS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; //Character set used in Lamport Private Key Parts
-    private static final int LAMPORT_PRIVATE_PART_SIZE = 20; //Maximum size of Lamport Private Part. At 1E12 tries per second, would take 22,337,120,292,586,187 years to brute-force one.  Not used, only for information.
+	public static final int LAMPORT_PRIVATE_PART_SIZE = 20; //Maximum size of Lamport Private Part. At 1E12 tries per second, would take 22,337,120,292,586,187 years to brute-force one.  Not used, only for information.
 
-    private static final String SOFTWARE_VERSION = "2.0.0a";
+	public static final String SOFTWARE_VERSION = "2.0.0a";
 
     private SecureRandom lmpPrivGen;
     private static org.apache.commons.codec.binary.Base32 base32 = new org.apache.commons.codec.binary.Base32();
@@ -49,7 +47,6 @@ public class MerkleTreeGenLimitless
         if (input.equals("2"))
         {
             MerkleTreeGenLimitless testGen = new MerkleTreeGenLimitless();
-            long totalTime = 0;
             System.out.println("Please enter the name of the scratch file...");
             String scratchFileName = scan.nextLine();
             System.out.println("Please enter the size of Merkle Tree you want...");
@@ -62,7 +59,6 @@ public class MerkleTreeGenLimitless
         else if (input.equals("3"))
         {
             MerkleTreeGenLimitless testGen = new MerkleTreeGenLimitless();
-            long totalTime = 0;
             System.out.println("What is the private key?");
             String privateKey = scan.nextLine();
             System.out.println("What would you like to call the scratch file?");
@@ -78,7 +74,6 @@ public class MerkleTreeGenLimitless
         else
         {
             MerkleTreeGenLimitless testGen = new MerkleTreeGenLimitless();
-            long totalTime = 0;
             System.out.println("What is the private key?");
             String privateKey = scan.nextLine();
             System.out.println("Please enter the size of Merkle Tree you want...");
@@ -90,6 +85,7 @@ public class MerkleTreeGenLimitless
             System.out.println("Took: " + (System.currentTimeMillis() - currentTime) + "ms");
             System.out.println("Address: " + address);
         }
+        scan.close();
     }
 
     /**
@@ -167,11 +163,8 @@ public class MerkleTreeGenLimitless
             //SecureRandom seeded by privateKey will be used to generate private seeds for all Merkle Trees
             SecureRandom generatePrivateSeeds = SecureRandom.getInstance("SHA1PRNG");
             generatePrivateSeeds.setSeed(privateKey.getBytes());
-            //Will store all layers of the MerkleTree, except the Lamport Private Key bases, which are not counted as a layer in the layer count.
-            ArrayList<String[]> layers = new ArrayList<String[]>();
             //First layer will hold hashes of Lamport Private Key bases, which must be generated
             long lastPrint = System.currentTimeMillis();
-            int lastUpdate = 0;
             PrintWriter scratch = new PrintWriter(new File(scratchFileName));
             for (int i = 0; i < (int)Math.pow(2, (numLayers-1)); i++) //2^(numLayers-1) is how many Lamport Signatures need to be generated. Also max possible signatures.
             {
@@ -331,7 +324,8 @@ public class MerkleTreeGenLimitless
      * This method uses the lmpPrivGen object to generate the next Lamport Private Key part. Each Lamport Private Key Part is 20 psuedo-random characters. 
      * @return String The next 20-character Lamport Private Key part.
      */
-    private String getLamportPrivateKey()
+    @SuppressWarnings("unused")
+	private String getLamportPrivateKey()
     {
         int len = CS.length();
         return "" + CS.charAt(lmpPrivGen.nextInt(len)) + CS.charAt(lmpPrivGen.nextInt(len)) + CS.charAt(lmpPrivGen.nextInt(len)) + CS.charAt(lmpPrivGen.nextInt(len)) + CS.charAt(lmpPrivGen.nextInt(len)) + 
@@ -345,7 +339,8 @@ public class MerkleTreeGenLimitless
      * @param toHash The String to hash using SHA256
      * @return String The 16-character base64 String resulting from hashing toHash and truncating
      */
-    private String SHA256Short(String toHash) //Each hash is shortened to 16 characters based on a 64-character charset. 64^16=79,228,162,514,264,337,593,543,950,336 (Aka more than enough for Lamport)
+    @SuppressWarnings("unused")
+	private String SHA256Short(String toHash) //Each hash is shortened to 16 characters based on a 64-character charset. 64^16=79,228,162,514,264,337,593,543,950,336 (Aka more than enough for Lamport)
     {
         try
         {

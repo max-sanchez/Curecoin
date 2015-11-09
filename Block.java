@@ -114,8 +114,9 @@ public class Block
     public Block(String rawBlock)
     {
         /*
-         * Using a workaround for the unknown number of transactions, which would eash be split into multiple parts as they contain a comma as part of the signature. As such, all part up to and including
-         * the list of transactions are parsed manually. Then, the remainder can be separated using the split command. 
+         * Using a workaround for the unknown number of transactions, which would each be split into multiple parts as they 
+         * contain a comma as part of the signature. As such, all part up to and including the list of transactions are parsed 
+         * manually. Then, the remainder can be separated using the split command. 
          */
         String[] parts = new String[11];
         parts[0] = rawBlock.substring(0, rawBlock.indexOf("}") + 1);
@@ -187,6 +188,15 @@ public class Block
             e.printStackTrace();
         }
     }
+    
+    /**
+     * Gets the address which mined this block.
+     * @return String Address of block miner
+     */
+    public String getMiner()
+    {
+    	return certificate.redeemAddress;
+    }
 
     /**
      * Used to check a variety of conditions to ensure that a block is valid.
@@ -199,131 +209,299 @@ public class Block
      * 
      * @return boolean Whether the self-contained block is valid. Does not represent inclusion in the network, or existence of the previous block.
      */
-    public boolean validateBlock()
+    public boolean validateBlock(Blockchain blockchain)
     {
         System.out.println("Validating block " + blockNum);
-        try
+        if (difficulty == 100000)
         {
-            if (!certificate.validateCertificate())
-            {
-                System.out.println("Certificate validation error");
-                return false; //Certificate is not valid.
-            }
-            if (winningNonce > certificate.maxNonce)
-            {
-                System.out.println("Winning nonce error");
-                return false; //winningNonce is outside of the nonce range!
-            }
-            if (blockNum != certificate.blockNum)
-            {
-                System.out.println("Block height does not match certificate height!");
-                return false; //Certificate and block height are not equal
-            }
-            long certificateScore = certificate.getScoreAtNonce(winningNonce); //Lower score is better
-            long target = Long.MAX_VALUE/(difficulty/2);
-            if (certificateScore < target)
-            {
-                System.out.println("Certificate score error");
-                return false; //Certificate doesn't fall below the target difficulty when mined.
-            }
-            String transactionsString = "";
-            //Transaction format: FromAddress;InputAmount;ToAddress1;Output1;ToAddress2;Output2... etc.
-            for (int i = 0; i < transactions.size(); i++)
-            {
-                if (transactions.get(i).length() > 10) //Arbitrary number, makes sure empty transaction sets still function
-                {
-                    transactionsString += transactions.get(i) + "*";
-                }
-            }
-            //Recalculate blockhash, as I'm a naturally paranoid person.
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            if (transactionsString.length() > 2) //Prevent empty transaction sets from tripping with a negative substring index
-            {
-                transactionsString = transactionsString.substring(0, transactionsString.length() - 1);
-            }
-            String blockData = "{" + timestamp + ":" + blockNum + ":" + previousBlockHash + ":" + difficulty + ":" + winningNonce + "},{" + ledgerHash + "},{" + transactionsString + "}," + certificate.getFullCertificate();
-            String blockHash = DatatypeConverter.printHexBinary(md.digest(blockData.getBytes("UTF-8")));
-            String fullBlock = blockData + ",{" + blockHash + "}"; //This is the message signed by the block miner
-            MerkleAddressUtility MerkleAddressUtility = new MerkleAddressUtility();
-            if (!MerkleAddressUtility.verifyMerkleSignature(fullBlock, minerSignature, certificate.redeemAddress, minerSignatureIndex))
-            {
-                System.out.println("Block didn't verify for " + certificate.redeemAddress + " with index " + minerSignatureIndex);
-                System.out.println("Signature mismatch error");
-                System.out.println("fullBlock: " + fullBlock);
-                System.out.println("minerSignature: " + minerSignature);
-                return false; //Block mining signature is not valid
-            }
-            if (transactions.size() == 1 && transactions.get(0).equals(""))
-            {
-                //Block has no explicit transactions
-                return true;
-            }
-            else if (transactions.size() == 0)
-            {
-                //Block has no explicit transactions
-                return true;
-            }
-            for (int i = 0; i < transactions.size(); i++)
-            {
-                /*
-                 * Transaction format:
-                 * InputAddress;InputAmount;OutputAddress1;OutputAmount1;OutputAddress2;OutputAmount2...;SignatureData;SignatureIndex
-                 */
-                try
-                {
-                    String tempTransaction = transactions.get(i);
-                    String[] transactionParts = tempTransaction.split(";");
-                    if (transactionParts.length % 2 != 0 || transactionParts.length < 6)
-                    {
-                        System.out.println("Error validating block: transactionParts.length = " + transactionParts.length);
-                        for (int j = 0; j < transactionParts.length; j++)
-                        {
-                            System.out.println("     " + j + ": " + transactionParts[j]);
-                        }
-                        return false; //Each address should line up with an output, and no explicit transaction is possible with fewer than six parts (see above)
-                    }
-                    for (int j = 0; j < transactionParts.length - 2; j+=2) //Last two parts are signatureData and signatureIndex,respectively
-                    {
-                        if (!MerkleAddressUtility.isAddressFormattedCorrectly(transactionParts[j]))
-                        {
-                            System.out.println("Error validating block: address " + transactionParts[j] + " is invalid.");
-                            return false; //Address in transaction is misformatted
-                        }
-                    }
-                    long inputAmount = Long.parseLong(transactionParts[1]);
-                    long outputAmount = 0L;
-                    for (int j = 3; j < transactionParts.length - 2; j+=2) //Element 3 (4th element) and each subsequent odd-numbered index up to transactionParts should be an output amount.
-                    {
-                        outputAmount += Long.parseLong(transactionParts[j]);
-                    }
-                    if (inputAmount - outputAmount < 0)
-                    {
-                        System.out.println("Error validating block: more coins output than input!");
-                        return false; //Coins can't be created out of thin air!
-                    }
-                    String transactionData = "";
-                    for (int j = 0; j < transactionParts.length - 2; j++)
-                    {
-                        transactionData += transactionParts[j] + ";";
-                    }
-                    transactionData = transactionData.substring(0, transactionData.length() - 1);
-                    if (!MerkleAddressUtility.verifyMerkleSignature(transactionData, transactionParts[transactionParts.length - 2], transactionParts[0], Long.parseLong(transactionParts[transactionParts.length - 1])))
-                    {
-                        System.out.println("Error validating block: signature does not match!");
-                        return false; //Siganture doesn't match
-                    }
-                } catch (Exception e) //Likely an error parsing a Long or performing some String manipulation task. Maybe array bounds exceptions.
-                {
-                    e.printStackTrace();
-                    return false;
-                }
-            }
-        } catch (Exception e)
-        {
-            e.printStackTrace();
-            return false;
+        	// No certificate validation required, certificate is simply filled with zeros.
+        	if (winningNonce > difficulty)
+        	{
+        		return false; // PoS difficulty exceeded
+        	}
+        	if (blockNum < 500)
+        	{
+        		// No PoS blocks allowed before block 500
+        		return false;
+        	}
+        	for (int i = blockNum; i > blockNum - 500; i--)
+        	{
+        		if (blockchain.getBlock(i).getMiner().equals(certificate.redeemAddress))
+        		{
+        			return false; // Address has sent coins in the last 500 blocks!
+        		}
+        	}
+        	try
+        	{
+	        	String transactionsString = "";
+	            //Transaction format: FromAddress;InputAmount;ToAddress1;Output1;ToAddress2;Output2... etc.
+	            for (int i = 0; i < transactions.size(); i++)
+	            {
+	                if (transactions.get(i).length() > 10) //Arbitrary number, makes sure empty transaction sets still function
+	                {
+	                    transactionsString += transactions.get(i) + "*";
+	                }
+	            }
+	            //Recalculate block hash
+	            MessageDigest md = MessageDigest.getInstance("SHA-256");
+	            if (transactionsString.length() > 2) //Prevent empty transaction sets from tripping with a negative substring index
+	            {
+	                transactionsString = transactionsString.substring(0, transactionsString.length() - 1);
+	            }
+	            String blockData = "{" + timestamp + ":" + blockNum + ":" + previousBlockHash + ":" + difficulty + ":" + winningNonce + "},{" + ledgerHash + "},{" + transactionsString + "}," + certificate.getFullCertificate();
+	            String blockHash = DatatypeConverter.printHexBinary(md.digest(blockData.getBytes("UTF-8")));
+	            String fullBlock = blockData + ",{" + blockHash + "}"; //This is the message signed by the block miner
+	            MerkleAddressUtility MerkleAddressUtility = new MerkleAddressUtility();
+	            if (!MerkleAddressUtility.verifyMerkleSignature(fullBlock, minerSignature, certificate.redeemAddress, minerSignatureIndex))
+	            {
+	                System.out.println("Block didn't verify for " + certificate.redeemAddress + " with index " + minerSignatureIndex);
+	                System.out.println("Signature mismatch error");
+	                System.out.println("fullBlock: " + fullBlock);
+	                System.out.println("minerSignature: " + minerSignature);
+	                return false; //Block mining signature is not valid
+	            }
+	            if (transactions.size() == 1 && transactions.get(0).equals(""))
+	            {
+	                //Block has no explicit transactions
+	                return true;
+	            }
+	            else if (transactions.size() == 0)
+	            {
+	                //Block has no explicit transactions
+	                return true;
+	            }
+	            for (int i = 0; i < transactions.size(); i++)
+	            {
+	                /*
+	                 * Transaction format:
+	                 * InputAddress;InputAmount;OutputAddress1;OutputAmount1;OutputAddress2;OutputAmount2...;SignatureData;SignatureIndex
+	                 */
+	                try
+	                {
+	                    String tempTransaction = transactions.get(i);
+	                    String[] transactionParts = tempTransaction.split(";");
+	                    if (transactionParts.length % 2 != 0 || transactionParts.length < 6)
+	                    {
+	                        System.out.println("Error validating block: transactionParts.length = " + transactionParts.length);
+	                        for (int j = 0; j < transactionParts.length; j++)
+	                        {
+	                            System.out.println("     " + j + ": " + transactionParts[j]);
+	                        }
+	                        return false; //Each address should line up with an output, and no explicit transaction is possible with fewer than six parts (see above)
+	                    }
+	                    for (int j = 0; j < transactionParts.length - 2; j+=2) //Last two parts are signatureData and signatureIndex,respectively
+	                    {
+	                        if (!MerkleAddressUtility.isAddressFormattedCorrectly(transactionParts[j]))
+	                        {
+	                            System.out.println("Error validating block: address " + transactionParts[j] + " is invalid.");
+	                            return false; //Address in transaction is misformatted
+	                        }
+	                    }
+	                    long inputAmount = Long.parseLong(transactionParts[1]);
+	                    long outputAmount = 0L;
+	                    for (int j = 3; j < transactionParts.length - 2; j+=2) //Element 3 (4th element) and each subsequent odd-numbered index up to transactionParts should be an output amount.
+	                    {
+	                        outputAmount += Long.parseLong(transactionParts[j]);
+	                    }
+	                    if (inputAmount - outputAmount < 0)
+	                    {
+	                        System.out.println("Error validating block: more coins output than input!");
+	                        return false; //Coins can't be created out of thin air!
+	                    }
+	                    String transactionData = "";
+	                    for (int j = 0; j < transactionParts.length - 2; j++)
+	                    {
+	                        transactionData += transactionParts[j] + ";";
+	                    }
+	                    transactionData = transactionData.substring(0, transactionData.length() - 1);
+	                    if (!MerkleAddressUtility.verifyMerkleSignature(transactionData, transactionParts[transactionParts.length - 2], transactionParts[0], Long.parseLong(transactionParts[transactionParts.length - 1])))
+	                    {
+	                        System.out.println("Error validating block: signature does not match!");
+	                        return false; //Siganture doesn't match
+	                    }
+	                } catch (Exception e) //Likely an error parsing a Long or performing some String manipulation task. Maybe array bounds exceptions.
+	                {
+	                    e.printStackTrace();
+	                    return false;
+	                }
+	            }
+        	} catch (Exception e) { }
+                //
+        	return true;
         }
-        return true;
+        else if (difficulty == 150000) // PoW block
+        {
+            try
+            {
+                if (!certificate.validateCertificate())
+                {
+                    System.out.println("Certificate validation error");
+                    return false; //Certificate is not valid.
+                }
+                if (winningNonce > certificate.maxNonce)
+                {
+                    System.out.println("Winning nonce error");
+                    return false; //winningNonce is outside of the nonce range!
+                }
+                if (blockNum != certificate.blockNum)
+                {
+                    System.out.println("Block height does not match certificate height!");
+                    return false; //Certificate and block height are not equal
+                }
+                long certificateScore = certificate.getScoreAtNonce(winningNonce); //Lower score is better
+                long target = Long.MAX_VALUE/(difficulty/2);
+                if (certificateScore < target)
+                {
+                    System.out.println("Certificate score error");
+                    return false; //Certificate doesn't fall below the target difficulty when mined.
+                }
+                String transactionsString = "";
+                //Transaction format: FromAddress;InputAmount;ToAddress1;Output1;ToAddress2;Output2... etc.
+                for (int i = 0; i < transactions.size(); i++)
+                {
+                    if (transactions.get(i).length() > 10) //Arbitrary number, makes sure empty transaction sets still function
+                    {
+                        transactionsString += transactions.get(i) + "*";
+                    }
+                }
+                //Recalculate block hash
+                MessageDigest md = MessageDigest.getInstance("SHA-256");
+                if (transactionsString.length() > 2) //Prevent empty transaction sets from tripping with a negative substring index
+                {
+                    transactionsString = transactionsString.substring(0, transactionsString.length() - 1);
+                }
+                String blockData = "{" + timestamp + ":" + blockNum + ":" + previousBlockHash + ":" + difficulty + ":" + winningNonce + "},{" + ledgerHash + "},{" + transactionsString + "}," + certificate.getFullCertificate();
+                String blockHash = DatatypeConverter.printHexBinary(md.digest(blockData.getBytes("UTF-8")));
+                String fullBlock = blockData + ",{" + blockHash + "}"; //This is the message signed by the block miner
+                MerkleAddressUtility MerkleAddressUtility = new MerkleAddressUtility();
+                if (!MerkleAddressUtility.verifyMerkleSignature(fullBlock, minerSignature, certificate.redeemAddress, minerSignatureIndex))
+                {
+                    System.out.println("Block didn't verify for " + certificate.redeemAddress + " with index " + minerSignatureIndex);
+                    System.out.println("Signature mismatch error");
+                    System.out.println("fullBlock: " + fullBlock);
+                    System.out.println("minerSignature: " + minerSignature);
+                    return false; //Block mining signature is not valid
+                }
+                if (transactions.size() == 1 && transactions.get(0).equals(""))
+                {
+                    //Block has no explicit transactions
+                    return true;
+                }
+                else if (transactions.size() == 0)
+                {
+                    //Block has no explicit transactions
+                    return true;
+                }
+                for (int i = 0; i < transactions.size(); i++)
+                {
+                    /*
+                     * Transaction format:
+                     * InputAddress;InputAmount;OutputAddress1;OutputAmount1;OutputAddress2;OutputAmount2...;SignatureData;SignatureIndex
+                     */
+                    try
+                    {
+                        String tempTransaction = transactions.get(i);
+                        String[] transactionParts = tempTransaction.split(";");
+                        if (transactionParts.length % 2 != 0 || transactionParts.length < 6)
+                        {
+                            System.out.println("Error validating block: transactionParts.length = " + transactionParts.length);
+                            for (int j = 0; j < transactionParts.length; j++)
+                            {
+                                System.out.println("     " + j + ": " + transactionParts[j]);
+                            }
+                            return false; //Each address should line up with an output, and no explicit transaction is possible with fewer than six parts (see above)
+                        }
+                        for (int j = 0; j < transactionParts.length - 2; j+=2) //Last two parts are signatureData and signatureIndex,respectively
+                        {
+                            if (!MerkleAddressUtility.isAddressFormattedCorrectly(transactionParts[j]))
+                            {
+                                System.out.println("Error validating block: address " + transactionParts[j] + " is invalid.");
+                                return false; //Address in transaction is misformatted
+                            }
+                        }
+                        long inputAmount = Long.parseLong(transactionParts[1]);
+                        long outputAmount = 0L;
+                        for (int j = 3; j < transactionParts.length - 2; j+=2) //Element 3 (4th element) and each subsequent odd-numbered index up to transactionParts should be an output amount.
+                        {
+                            outputAmount += Long.parseLong(transactionParts[j]);
+                        }
+                        if (inputAmount - outputAmount < 0)
+                        {
+                            System.out.println("Error validating block: more coins output than input!");
+                            return false; //Coins can't be created out of thin air!
+                        }
+                        String transactionData = "";
+                        for (int j = 0; j < transactionParts.length - 2; j++)
+                        {
+                            transactionData += transactionParts[j] + ";";
+                        }
+                        transactionData = transactionData.substring(0, transactionData.length() - 1);
+                        if (!MerkleAddressUtility.verifyMerkleSignature(transactionData, transactionParts[transactionParts.length - 2], transactionParts[0], Long.parseLong(transactionParts[transactionParts.length - 1])))
+                        {
+                            System.out.println("Error validating block: signature does not match!");
+                            return false; //Siganture doesn't match
+                        }
+                    } catch (Exception e) //Likely an error parsing a Long or performing some String manipulation task. Maybe array bounds exceptions.
+                    {
+                        e.printStackTrace();
+                        return false;
+                    }
+                }
+            } catch (Exception e)
+            {
+                e.printStackTrace();
+                return false;
+            }
+            return true;
+        }
+        else
+        {
+        	return false;
+        }
+    }
+
+    /**
+     * Scans the block for any transactions that involve the provided address.
+     * Returns ArrayList<String> containing "simplified" transactions, in the format of sender:amount:receiver
+     * Each of these "simplified" transaction formats don't necessarily express an entire transaction, but rather only portions
+     * of a transaction which involve either the target address sending or receiving coins.
+     * 
+     * @param addressToFind Address to search through block transaction pool for
+     * 
+     * @return ArrayList<String> Simplified-transaction-format list of all related transactions.
+     */
+    public ArrayList<String> getTransactionsInvolvingAddress(String addressToFind)
+    {
+        ArrayList<String> relevantTransactionParts = new ArrayList<String>();
+        for (int i = 0; i < transactions.size(); i++)
+        {
+            String tempTransaction = transactions.get(i);
+            //InputAddress;InputAmount;OutputAddress1;OutputAmount1;OutputAddress2;OutputAmount2...;SignatureData;SignatureIndex
+            String[] transactionParts = tempTransaction.split(";");
+            String sender = transactionParts[0];
+            if (addressToFind.equals(certificate.redeemAddress))
+            {
+                relevantTransactionParts.add("COINBASE" + ":" + "100" + ":" + certificate.redeemAddress);
+            }
+            if (sender.equalsIgnoreCase(addressToFind))
+            {
+                for (int j = 2; j < transactionParts.length - 2; j+=2)
+                {
+                    relevantTransactionParts.add(sender + ":" + transactionParts[j+1] + ":" + transactionParts[j]);
+                }
+            }
+            else
+            {
+                for (int j = 2; j < transactionParts.length - 2; j+=2)
+                {
+                    if (transactionParts[j].equalsIgnoreCase(addressToFind))
+                    {
+                        relevantTransactionParts.add(sender + ":" + transactionParts[j+1] + ":" + transactionParts[j]); 
+                    }
+                }
+            }
+        }
+        return relevantTransactionParts;
     }
 
     /**

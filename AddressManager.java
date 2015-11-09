@@ -20,10 +20,6 @@ public class AddressManager
     private ArrayList<String> privateKeys;
     private MerkleTreeGenLimitless treeGen;
     private int defaultAddressOffset = 1;
-    public static void main(String[] args)
-    {
-        AddressManager addyMan = new AddressManager();
-    }
 
     /**
      * Loads in wallet private key. If none exist, generates an address.
@@ -70,6 +66,7 @@ public class AddressManager
                     String[] combo = scan.nextLine().split(":");
                     treeGen.generateMerkleTree(combo[1], 14, 16, 128);
                 }
+                scan.close();
             }
             else
             {

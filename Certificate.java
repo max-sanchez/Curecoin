@@ -6,7 +6,6 @@
  * Supports Java 1.7+
  */
 
-import java.io.*;
 import java.util.*;
 import java.security.*;
 
@@ -205,7 +204,7 @@ public class Certificate
                  * bit has a 50 percent chance every hash to be a 1. If it's a 1, it's a huge number anyway (2^63 plus change). 
                  * As a result, there's no reason to even care about any negative longs, as they actually represent the biggest numbers (if longs were unsigned).
                  * 
-                 * 111111111111111111111111111111111111111111111111111111111111 is actually a negative number when converted, because a long is a signed number.
+                 * 111111111111111111111111111111111111111111111111111111111111 is actually a negative number when converted, because a long is signed.
                  * If tempDiff is negative, it means its most significant bit is a 1, so if it wasn't signed, it would be huge.
                  * For this reason, it's incredibly safe to discard all negative numbers. If the Curecoin network difficulty is so easy that a Long represented in binary
                  * starting with a 1 can solve it, I'll start folding on a raspberry pie and fix it. There would have to be, on average, only one certificate per three

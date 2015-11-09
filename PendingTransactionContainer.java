@@ -53,7 +53,6 @@ public class PendingTransactionContainer
                     return false;
                 }
             }
-            MerkleAddressUtility merkleAddressUtility = new MerkleAddressUtility();
             if (!TransactionUtility.isTransactionValid(transaction))
             {
                 System.out.println("Throwing out a transaction deemed invalid");
@@ -155,7 +154,7 @@ public class PendingTransactionContainer
              * that we aren't removing will never happen on-chain if we remove them from the pool when an invalid block says we should. Also closes a potential attack
              * vector where someone could submit false blocks in order to be a nuisance and empty the pending transaction pool.
              */
-            if (!tempBlock.validateBlock())
+            if (!tempBlock.validateBlock(databaseMaster.blockchain))
             {
                 return false; //No transactions remove at all!
             }
@@ -174,5 +173,47 @@ public class PendingTransactionContainer
             e.printStackTrace();
             return false;
         }
+    }
+
+    /**
+     * This method scans through all of the pending transactions to calculate the total (net) balance change pending on an address. A negative value represents
+     * coins that were sent from the address in question, and a positive value represents coins awaiting confirmations to arrive. 
+     * 
+     * @param address Curecoin 2.0 address to search the pending transaction pool for
+     * 
+     * @return long The pending total (net) change for the address in question
+     */
+    public long getPendingBalance(String address)
+    {
+        long totalChange = 0L;
+        for (int i = 0; i < pendingTransactions.size(); i++)
+        {
+            String transaction = pendingTransactions.get(i);
+            try
+            {
+                if (transaction.contains(address))
+                {
+                    String[] transactionParts = transaction.split(";");
+                    String senderAddress = transactionParts[0];
+                    if (senderAddress.equals(address))
+                    {
+                        totalChange -= Long.parseLong(transactionParts[1]);
+                    }
+                    for (int j = 2; j < transactionParts.length - 2; j+=2)
+                    {
+                        if (transactionParts[j].equals(address))
+                        {
+                            totalChange += Long.parseLong(transactionParts[j+1]);
+                        }
+                    }
+                }
+            } catch (Exception e)
+            {
+                e.printStackTrace();
+                System.err.println("Major problem: Transaction in the pending transaction pool is incorrectly formatted!");
+                System.err.println("Transaction in question: " + transaction);
+            }
+        }
+        return totalChange;
     }
 }

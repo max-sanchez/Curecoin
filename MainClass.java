@@ -10,7 +10,7 @@ import java.awt.*;
 import java.util.*;
 
 /**
- * Welcome to the Curecoin 2.0.0a1 source code! MainClass stitches all of the separate components together to make everything work.
+ * Welcome to the Curecoin 2.0.0a3 source code! MainClass stitches all of the separate components together to make everything work.
  * Quick overview of the program's structure:
  * CurecoinDatabaseManager handles all database-related workloads, such as storing/adding blocks, account balance lookups, etc.
  * PendingTransactionContainer is simply a glorified ArrayList<String> to hold pending transactions.
@@ -22,7 +22,7 @@ public class MainClass
 {
     public static void main(String[] args)
     {
-        launch();
+        // launch();
         //Start of the program, initialize Database object
         CurecoinDatabaseMaster databaseMaster = new CurecoinDatabaseMaster("database");
         PendingTransactionContainer pendingTransactionContainer = new PendingTransactionContainer(databaseMaster);
@@ -42,6 +42,7 @@ public class MainClass
                 /*
                  * In future networks, these will route to servers running the daemon. For now, it's just the above IP.
                  */
+                
                 //out.println("2.curecoinmirror.com:8015");
                 //out.println("3.curecoinmirror.com:8015");
                 out.close();
@@ -61,6 +62,7 @@ public class MainClass
                 int port = Integer.parseInt(combo.substring(combo.indexOf(":") + 1));
                 peerNetwork.connectToPeer(host, port);
             }
+            scan.close();
             Thread.sleep(2000);
         } catch (Exception e)
         {
@@ -74,6 +76,29 @@ public class MainClass
         boolean catchupMode = true;
         while (true) 
         {
+            //Look for new peers
+            if (peerNetwork.newPeers.size() > 0)
+            {
+                for (int i = 0; i < peerNetwork.newPeers.size(); i++)
+                {
+                    if (peers.indexOf(peerNetwork.newPeers.get(i)) < 0)
+                    peers.add(peerNetwork.newPeers.get(i));
+                }
+                peerNetwork.newPeers = new ArrayList<String>();
+                try
+                {
+                    PrintWriter writePeerFile = new PrintWriter(new File("peers.lst"));
+                    for (int i = 0; i < peers.size(); i++)
+                    {
+                        writePeerFile.println(peers.get(i));
+                    }
+                    writePeerFile.close();
+                } catch (Exception e)
+                {
+                    System.out.println("[CRITICAL ERROR] UNABLE TO WRITE TO PEER FILE!");
+                    e.printStackTrace();
+                }
+            }
             //Look for new data from peers
             for (int i = 0; i < peerNetwork.peerThreads.size(); i++)
             {
@@ -90,7 +115,7 @@ public class MainClass
                  * For now, this is done to MAKE SURE everyone is on the same page with block/transaction propagation.
                  * In the future, much smarter algorithms for routing, perhaps sending "have you seen xxx transaction" or similar will be used.
                  * No point in sending 4 KB when a 64-byte message (or less) could check to make sure a transaction hasn't already been sent.
-                 * Not wanting to complicate 2.0.0a1, there are no fancy algorithms or means of telling if peers have already heard the news you are going to deliver.
+                 * Not wanting to complicate 2.0.0a3, there are no fancy algorithms or means of telling if peers have already heard the news you are going to deliver.
                  */
                 for (int j = 0; j < input.size(); j++)
                 {
@@ -196,8 +221,8 @@ public class MainClass
                                 }
                                 else
                                 {
-                                    System.out.println("Not a good transaction. Forwarding anyway cause this is 2.0.0a1");
-                                    peerNetwork.broadcast("TRANSACTION " + parts[1]);
+                                    System.out.println("Not a good transaction!");
+                                    //peerNetwork.broadcast("TRANSACTION " + parts[1]);
                                 }
                             }
                         }
@@ -336,10 +361,17 @@ public class MainClass
                             String fullTransaction = addressManager.getSignedTransaction(destinationAddress, amount, databaseMaster.getAddressSignatureIndex(address) + addressManager.getDefaultAddressIndexOffset());
                             addressManager.incrementDefaultAddressIndexOffset();
                             System.out.println("Attempting to verify transaction... " + TransactionUtility.isTransactionValid(fullTransaction));
-                            pendingTransactionContainer.addTransaction(fullTransaction);
-                            peerNetwork.broadcast("TRANSACTION " + fullTransaction);
-                            System.out.println("Sending " + amount + " from " + address + " to " + destinationAddress);
-                            rpcAgent.rpcThreads.get(i).response = "Sent " + amount + " from " + address + " to " + destinationAddress;
+                            if (TransactionUtility.isTransactionValid(fullTransaction))
+                            {
+                                pendingTransactionContainer.addTransaction(fullTransaction);
+                                peerNetwork.broadcast("TRANSACTION " + fullTransaction);
+                                System.out.println("Sending " + amount + " from " + address + " to " + destinationAddress);
+                                rpcAgent.rpcThreads.get(i).response = "Sent " + amount + " from " + address + " to " + destinationAddress;
+                            }
+                            else
+                            {
+                                rpcAgent.rpcThreads.get(i).response = "UNABLE TO SEND: Invalid transaction!";
+                            }
                         } catch (Exception e)
                         {
                             rpcAgent.rpcThreads.get(i).response = "Syntax (don't use < and >): send <amount> <destination>";
@@ -367,7 +399,7 @@ public class MainClass
                          * If 1. shows a difficulty above the network difficulty (below the target), proceed with creating a block:
                          * 2.) Gather all transactions from the pending transaction pool. Test all for validity. Test all under a max balance test.
                          * 3.) Put correct transactions in any arbitrary order, except for multiple transactions from the same address, which are ordered by signature index.
-                         * 4.) Input the ledger hash (In 2.0.0a1, this is 0000000000000000000000000000000000000000000000000000000000000000, as ledger hashing isn't fully implemented)
+                         * 4.) Input the ledger hash (In 2.0.0a3, this is 0000000000000000000000000000000000000000000000000000000000000000, as ledger hashing isn't fully implemented)
                          * 5.) Hash the block
                          * 6.) Sign the block
                          * 7.) Return full block
@@ -466,6 +498,34 @@ public class MainClass
                             rpcAgent.rpcThreads.get(i).response = "Certificate failed with target score " + lowestScore + "\nWhich is above target " + target;
                         } 
                     }
+                    else if (parts[0].equals("gethistory"))
+                    {
+                        if (parts.length > 1)
+                        {
+                            ArrayList<String> allTransactions = databaseMaster.getAllTransactionsInvolvingAddress(parts[1]);
+                            String allTransactionsFlat = "";
+                            for (int j = 0; j < allTransactions.size(); j++)
+                            {
+                                allTransactionsFlat += allTransactions.get(j) + "\n";
+                            }
+                            rpcAgent.rpcThreads.get(i).response = allTransactionsFlat;
+                        }
+                        else
+                        {
+                            rpcAgent.rpcThreads.get(i).response = "gethistory <address>";
+                        }
+                    }
+                    else if (parts[0].equals("getpending"))
+                    {
+                        if (parts.length > 1)
+                        {
+                            rpcAgent.rpcThreads.get(i).response = "" + pendingTransactionContainer.getPendingBalance(parts[1]);
+                        }
+                        else
+                        {
+                            rpcAgent.rpcThreads.get(i).response = "getpending <address>";
+                        }
+                    }
                     else
                     {
                         rpcAgent.rpcThreads.get(i).response = "Unknown command \"" + parts[0] + "\"";
@@ -500,7 +560,7 @@ public class MainClass
                     File JarFile = new File(MainClass.class.getProtectionDomain().getCodeSource().getLocation().toURI());//Get the absolute location of the .jar file
                     PrintWriter out = new PrintWriter(new File("launch.bat")); //Get a PrintWriter object to make a batch file
                     out.println("@echo off"); //turn echo off for batch file
-                    out.println("title Curecoin 2.0.0a1"); 
+                    out.println("title Curecoin 2.0.0a3"); 
                     out.println("java -Xmx500M -jar \"" + JarFile.getPath() + "\"");
                     out.println("start /b \"\" cmd /c del \"%~f0\"&exit /b");
                     out.close(); //saves file

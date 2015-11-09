@@ -113,7 +113,7 @@ public class Blockchain
             addedABlock = false;
             for (int i = 0; i < blockQueue.size(); i++)
             {
-                if (blockQueue.get(i).validateBlock())
+                if (blockQueue.get(i).validateBlock(this))
                 {
                     if (addBlock(blockQueue.get(i), false))
                     {
@@ -167,7 +167,12 @@ public class Blockchain
         System.out.println("Attempting to add block " + block.blockNum + " with hash " + block.blockHash);
         try
         {
-            if (block.difficulty != 150000) //2.0.0a1 Hard-coded difficulty. 1 in 150000 nonces will win. So a certificate with 15,000 nonces has a 10% chance of winning, etc. 
+        	boolean isPOS = false;
+        	if (block.difficulty == 100000) // 2.0.0a4 Hard-coded PoS difficulty.
+        	{
+        		isPOS = true;
+        	}
+            if (block.difficulty != 150000 && !isPOS) //2.0.0a1 Hard-coded PoW difficulty. 1 in 150000 nonces will win. So a certificate with 15,000 nonces has a 10% chance of winning, etc. 
             {
                 System.out.println("Block detected with wrong difficulty");
                 return false;
@@ -194,7 +199,7 @@ public class Blockchain
                     i--; //Compensate for resized ArrayList!
                 }
             }
-            if (!block.validateBlock())
+            if (!block.validateBlock(this))
             {
                 return false; //Block is not a valid block. Don't add it!
             }
@@ -274,10 +279,6 @@ public class Blockchain
             for (int i = 0; i < chains.size(); i++)
             {
                 //Block numbering starts at 0
-                String test = chains.get(i).get(chains.get(i).size() - 1).blockHash;
-                String test2 = block.previousBlockHash;
-                String test3 = chains.get(i).size() + "";
-                String tset4 = block.blockNum + "";
                 if (chains.get(i).get(chains.get(i).size() - 1).blockHash.equals(block.previousBlockHash) && chains.get(i).size() == block.blockNum) //Great! New block stacks nicely onto one of the other blocks.
                 {
                     chains.get(i).add(block);
@@ -298,7 +299,7 @@ public class Blockchain
                                 ledgerManager.adjustAddressBalance(largestChain.get(j).certificate.redeemAddress, -100); //Reverse mining income...
                                 ledgerManager.adjustAddressSignatureCount(largestChain.get(j).certificate.redeemAddress, -1);
                             }
-                            //The ledger is completely empty, basically. Good job. Efficiency at its finest. I WILL FIX THIS!
+                            //The ledger is completely empty, basically. Good job. Efficiency at its finest. I WILL FIX THIS
                             for (int j = 0; j < chains.get(i).size(); j++)
                             {
                                 //We can't directly assign transactionsToApply to block.transactions as we are going to edit it, and we don't want to delete transactions from the actual block.
@@ -390,7 +391,7 @@ public class Blockchain
             boolean foundPlaceForBlock = false;
             for (int i = 0; i < chains.size(); i++)
             {
-                ArrayList<Block> tempChain = chains.get(i); //No working with this ArrayList indrectly; we've got a lot of work to do!
+                ArrayList<Block> tempChain = chains.get(i); //No working with this ArrayList indirectly; we've got a lot of work to do!
                 for (int j = tempChain.size() - 11; j < tempChain.size(); j++)
                 {
                     if (j < 0) //Pathetically-early network forks handled
@@ -485,6 +486,40 @@ public class Blockchain
             return false;
         }
         return true;
+    }
+
+    /**
+     * Calls getTransactionsInvolvingAddress() on all Block objects in the current Blockchain to get all relevant transactions.
+     * 
+     * @param addressToFind Address to search through all block transaction pools for
+     * 
+     * @return ArrayList<String> All transactions in simplified form blocknum:sender:amount:receiver of
+     */
+    public ArrayList<String> getAllTransactionsInvolvingAddress(String addressToFind)
+    {
+        int longestChainLength = 0;
+        int longestChainNum = -1;
+        for (int i = 0; i < chains.size(); i++)
+        {
+            if (chains.get(i).size() > longestChainLength)
+            {
+                longestChainNum = i;
+                longestChainLength = chains.get(i).size();
+            }
+        }
+        ArrayList<Block> longestChain = chains.get(longestChainNum);
+
+        ArrayList<String> allTransactions = new ArrayList<String>();
+
+        for (int i = 0; i < longestChain.size(); i++)
+        {
+            ArrayList<String> transactionsFromBlock = longestChain.get(i).getTransactionsInvolvingAddress(addressToFind);
+            for (int j = 0; j < transactionsFromBlock.size(); j++)
+            {
+                allTransactions.add(longestChain.get(i).blockNum + ":" + transactionsFromBlock.get(j));
+            }
+        }
+        return allTransactions;
     }
 
     /**

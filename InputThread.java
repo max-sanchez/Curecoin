@@ -58,7 +58,8 @@ public class InputThread extends Thread
      * 
      * @return ArrayList<String> Data pulled from receivedData
      */
-    public ArrayList<String> readData()
+    @SuppressWarnings("unused")
+	public ArrayList<String> readData()
     {
         //System.out.println("readData() called!");
         //System.out.println("We have " + receivedData.size() + " pieces!");

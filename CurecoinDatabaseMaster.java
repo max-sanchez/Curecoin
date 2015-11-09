@@ -16,14 +16,7 @@ public class CurecoinDatabaseMaster
 {
     private File dbFolder;
     private MerkleAddressUtility merkleAddressUtility;
-    private Blockchain blockchain;
-
-    //Test method, obviously
-    public static void main(String[] args)
-    {
-        CurecoinDatabaseMaster dbMaster = new CurecoinDatabaseMaster("test");
-    }
-
+    public Blockchain blockchain;
     /**
      * Attempts to add a block to the blockchain; passthrough to Blockchain.addBlock(block).
      * 
@@ -112,7 +105,7 @@ public class CurecoinDatabaseMaster
             {
                 String blockString = scan.nextLine();
                 Block toAdd = new Block(blockString);
-                if (toAdd.validateBlock())
+                if (toAdd.validateBlock(this.blockchain))
                 {
                     blockchain.addBlock(toAdd, true);
                 }
@@ -186,5 +179,18 @@ public class CurecoinDatabaseMaster
     public void incrementAddressSignatureIndex(String address)
     {
         blockchain.ledgerManager.adjustAddressSignatureCount(address, 1);
+    }
+    
+    
+    /**
+     * Passthrough to Blockchain.getAllTransactionsInvolvingAddress
+     * 
+     * @param addressToFind Address to search through all block transaction pools for
+     * 
+     * @return ArrayList<String> All transactions in simplified form blocknum:sender:amount:receiver of
+     */
+    public ArrayList<String> getAllTransactionsInvolvingAddress(String addressToFind)
+    {
+        return blockchain.getAllTransactionsInvolvingAddress(addressToFind);
     }
 }

@@ -7,7 +7,6 @@
  */
 
 import java.net.*;
-import java.io.*;
 
 /**
  * Class handles all networking after a socket is accepted. Delegates work into two separate threads,

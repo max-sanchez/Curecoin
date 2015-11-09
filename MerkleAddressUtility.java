@@ -10,7 +10,6 @@ import java.util.*;
 import java.io.*;
 import java.security.*;
 import java.math.*;
-import org.apache.commons.codec.binary.*;
 
 /**
  * This class provides all methods necessary to use an address after it has been generated.
@@ -272,6 +271,7 @@ public class MerkleAddressUtility
                     }
                 }
             }
+            scanAddressInfo.close();
         } catch (Exception e)
         {
             System.out.println("ERROR: UNABLE TO READ INFORMATION FILE FOR ADDRESS " + address + "!");
@@ -298,6 +298,7 @@ public class MerkleAddressUtility
                     System.out.println("Consumed " + authPathIndexes[i] + " from layer " + i + ".");
                 }
                 String layerData = readLayerFile.nextLine();
+                readLayerFile.close();
                 if (verboseMode)
                 {
                     System.out.println("We think the " + (authPathIndexes[i]) + "th index is " + layerData + ".");

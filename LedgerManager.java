@@ -8,14 +8,13 @@
 
 import java.io.*;
 import java.util.*;
-import java.math.*;
 import java.security.*;
 import java.util.concurrent.*;
 import javax.xml.bind.DatatypeConverter;
 public class LedgerManager
 {
     private File addressDatabase;
-    private String addressDatabaseName;
+    public String addressDatabaseName;
     private ConcurrentHashMap<String, Long> addressBalances;
     private ConcurrentHashMap<String, Integer> addressSignatureCounts;
     private ArrayList<String> addresses;

@@ -6,10 +6,7 @@
  * Supports Java 1.7+
  */
 
-import java.io.*;
-import java.util.*;
 import java.security.*;
-import org.apache.commons.codec.binary.*;
 public class LamportGenThread extends Thread
 {
     private byte[][] seeds;
@@ -19,7 +16,6 @@ public class LamportGenThread extends Thread
     private static final String CS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; //Character set used in Lamport Private Key Parts
     private MessageDigest md;
     private MessageDigest md512;
-    private org.apache.commons.codec.binary.Base32 base32 = new org.apache.commons.codec.binary.Base32();
     private org.apache.commons.codec.binary.Base64 base64 = new org.apache.commons.codec.binary.Base64();
     public LamportGenThread()
     {
@@ -62,7 +58,6 @@ public class LamportGenThread extends Thread
 
     public void run()
     {
-        Scanner scan = new Scanner(System.in);
         try
         {
             for (int i = 0; i < count; i++)
@@ -78,7 +73,7 @@ public class LamportGenThread extends Thread
 
     /**
      * Yeah, it's ugly. This is a manual unroll of the loops required to generate a Lamport Public Key. It used to be very pretty. This is 2x as fast.
-     * It was worth it.
+     * The ugly code is worth the speedup.
      * This method takes a seed, creates a SecureRandom seeded with the input seed, and then directly generates the public key, without ever storing the
      * private key, as that is unnecessary. Each Lamport Private Key Part is 20 psuedo-random (from seeded SecureRandom) characters. There are 200
      * of these, to support signing a 100-bit message.

@@ -108,8 +108,8 @@ public class TransactionUtility
                     {
                         String[] parts = sortedTransactions.get(j).split(";");
                         int indexToGrab = parts.length - 1;
-                        String longToParse = sortedTransactions.get(j).split(";")[indexToGrab];
-                        long existingSigIndex = Long.parseLong(sortedTransactions.get(j).split(";")[sortedTransactions.get(j).split(";").length - 1]);
+                        String sigIndexToParse = sortedTransactions.get(j).split(";")[indexToGrab];
+                        long existingSigIndex = Long.parseLong(sigIndexToParse);
                         if (index < existingSigIndex)
                         {
                             //Insertion should occur before the currently-studied element

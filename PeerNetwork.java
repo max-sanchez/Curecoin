@@ -6,7 +6,6 @@
  * Supports Java 1.7+
  */
 
-import java.io.*;
 import java.net.*;
 import java.util.*;
 
@@ -20,8 +19,9 @@ public class PeerNetwork extends Thread
 {
     public int listenPort;
     public boolean shouldRun = true;
-    ArrayList<PeerThread> peerThreads;
+    public ArrayList<PeerThread> peerThreads;
 
+    public ArrayList<String> newPeers;
     /**
      * Default settings constructor
      */
@@ -29,6 +29,7 @@ public class PeerNetwork extends Thread
     {
         this.listenPort = 8015;
         this.peerThreads = new ArrayList<PeerThread>();
+        this.newPeers = new ArrayList<String>();
     }
 
     /**
@@ -42,6 +43,11 @@ public class PeerNetwork extends Thread
         try
         {
             Socket socket = new Socket(peer, port);
+            String remoteHost = socket.getInetAddress() + "";
+            remoteHost = remoteHost.replace("/", "");
+            remoteHost = remoteHost.replace("\\", "");
+            int remotePort = socket.getPort();
+            newPeers.add(remoteHost + ":" + remotePort);
             peerThreads.add(new PeerThread(socket));
             peerThreads.get(peerThreads.size() - 1).start();
         } catch (Exception e)
@@ -74,6 +80,7 @@ public class PeerNetwork extends Thread
                 peerThreads.add(new PeerThread(listenSocket.accept()));
                 peerThreads.get(peerThreads.size() - 1).start();
             }
+            listenSocket.close();
         } catch (Exception e)
         {
             e.printStackTrace(); //Most likely tripped by the inability to bind the listenPort.
@@ -89,6 +96,7 @@ public class PeerNetwork extends Thread
     {
         for (int i = 0; i < peerThreads.size(); i++)
         {
+            System.out.println("Sent:: " + toBroadcast);
             peerThreads.get(i).send(toBroadcast);
         }
     }
