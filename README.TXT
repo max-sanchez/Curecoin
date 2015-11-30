@@ -1,4 +1,4 @@
-Curecoin 2.0.0a1 Code!
+Curecoin 2.0.0a5 Code!
 Curecoin 2.0 Copyright (c) 2015 Curecoin Developers
 Distributed under MIT License
 Requires Apache Commons Library

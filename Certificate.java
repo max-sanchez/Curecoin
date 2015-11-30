@@ -33,7 +33,56 @@ public class Certificate
     public String prevBlockHash;
     public long signatureIndex; 
     public String signatureData;
-    public final Map<String, String> authorities;
+    public static final Map<String, String> authorities;
+    
+    // Authorities are not (in this version) going to be altered while running.
+    static
+    {
+
+        authorities = new HashMap<String, String>(2);
+        authorities.put("CureLabs", "A1H6CHCCRZZKW67NRSUHCQGWI4GWVYOCXGKYF6"); //Testnet authority 1
+        authorities.put("CureSystems", "A1SSVK57OGNPRRS5AD4SEYU2T3IXDBWJJZJE7B"); //Testnet authority 2
+    }
+    
+    /**
+     * Determines whether the certificate is PoW (complete certificate). If the certificate
+     * is filled with zeros (other than redeem address, maxNonce, blockNum, and prevBlockHash), then it is PoS instead.
+     * 
+     * @return boolean Whether the Certificate is PoW
+     */
+    public boolean isPoWCertificate()
+    {
+    	if (!isAllZeroes(arbitraryData))
+    	{
+    		return true;
+    	}
+    	if (!isAllZeroes(authorityName))
+    	{
+    		return true;
+    	}
+    	if (signatureIndex != 0)
+    	{
+    		return true;
+    	}
+    	if (!isAllZeroes(signatureData))
+    	{
+    		return true;
+    	}
+    	return false;
+    }
+    
+    private boolean isAllZeroes(String toTest)
+    {
+    	for (int i = 0; i < toTest.length(); i++)
+    	{
+    		// Commas allowed as separators...
+    		if (toTest.charAt(0) != '0' && toTest.charAt(0) != ',')
+    		{
+    			return false;
+    		}
+    	}
+    	return true;
+    }
 
     /**
      * Constructor for Certificate object. A constructed certificate object is not necessarily a valid certificate for the network--be sure to call validateCertificate()!
@@ -62,9 +111,6 @@ public class Certificate
         this.prevBlockHash = prevBlockHash;
         this.signatureIndex = signatureIndex;
         this.signatureData = signatureData;
-        authorities = new HashMap<String, String>(2);
-        authorities.put("CureLabs", "A1H6CHCCRZZKW67NRSUHCQGWI4GWVYOCXGKYF6"); //Testnet authority 1
-        authorities.put("CureSystems", "A1SSVK57OGNPRRS5AD4SEYU2T3IXDBWJJZJE7B"); //Testnet authority 2
     }
 
     /**
@@ -90,9 +136,6 @@ public class Certificate
         {
             e.printStackTrace();
         }
-        authorities = new HashMap<String, String>(2);
-        authorities.put("CureLabs", "A1H6CHCCRZZKW67NRSUHCQGWI4GWVYOCXGKYF6"); //Testnet authority 1
-        authorities.put("CureSystems", "A1SSVK57OGNPRRS5AD4SEYU2T3IXDBWJJZJE7B"); //Testnet authority 2
     }
 
     /**
@@ -140,7 +183,8 @@ public class Certificate
      * This method finds the nonce (between 0 and maxNonce) that provides the lowest difficulty score.
      * Used only for mining, lower difficulty scores are better. Peers do not need to run this when confirming certificates.
      * When a peer checks a certificate for mining rights, it simply checks the nonce provided by a peer.
-     * Theoretically, a certificate could have several nonces which solve a block. 
+     * Theoretically, a certificate could have several nonces which solve a block, but it wouldn't matter.
+     * 
      * Performance is more than adequate for intended purpose. Anyone suggesting I multithread this will be ignored. 
      * As this is only called by the miner once, and then never used again for a given certificate, it just has to work well.
      * On one core of an i7-3770K clocked at 3.9GHz, this can perform approximately 647,249 nonce checks per second. YMMV.
@@ -158,13 +202,15 @@ public class Certificate
      * Therefore, as the difficulty grows, the target shrinks. The target is Long.MAX_VALUE / (difficulty/2). The /2 accounts
      * for half of the numbers being negative. 
      * 
-     * At a difficulty of 10, 1/10 nonces will be a solution. At a difficulty of 100, 1/100 nonces will be a solution.
-     * At a difficulty of 1000, 1/1000 nonces will be a solution. You may notice a pattern.
+     * At a difficulty of 10, 1/10 nonces will be a solution. 
+     * At a difficulty of 100, 1/100 nonces will be a solution.
+     * At a difficulty of 1000, 1/1000 nonces will be a solution. Etc.
      * 
      * @return String Best nonce in certificate range with the corresponding difficulty. Format: "bestNonce:difficulty"
      */
     public String getMinCertificateScoreWithNonce()
     {
+    	System.out.println("Checking up to " + maxNonce);
         long score = Long.MAX_VALUE;
         int bestNonce = -1;
         try
@@ -193,9 +239,9 @@ public class Certificate
                  * 111 = 7
                  * 1111 = 15
                  * 01111 = 15
-                 * 10111 = 17
+                 * 10111 = 23
                  * Cool. So you'll notice that the number is bigger for two same-length pieces of binary when the first digit is a zero. 
-                 * This means the most sigificant bit is the left-most-bit.
+                 * This means the most significant bit is the left-most-bit.
                  * The above are examples of UNSIGNED conversion.
                  * Cause negative numbers are occasionally useful, Java's Long is signed. That means the first bit dictates whether the number is positive or negative.
                  * In what might appear counter-intuitive at first, if the first digit is a 1, the long is negative. If it is a 0, the long is positive.
@@ -210,7 +256,7 @@ public class Certificate
                  * starting with a 1 can solve it, I'll start folding on a raspberry pie and fix it. There would have to be, on average, only one certificate per three
                  * minutes, with only ONE allowed nonce (0) for the difficulty to drop this low. Aka Curecoin would have to be abandoned. By everyone. At the same time.
                  * In that event, allowing the block time to slip to 6 minutes (the result of discarding a potential solution to the minimum difficulty 50 percent of the
-                 * time) probably isn't my biggest concern. 
+                 * time) probably isn't the biggest concern. 
                  */
                 if (tempScore < score && tempScore > 0) //Longs are signed. Half of them will be negative, on average. Just throw out the negative ones. In unsigned-land, they're super huge and not suitable for mining anyhow. Read above. :)
                 {
@@ -222,6 +268,7 @@ public class Certificate
         {
             e.printStackTrace();
         }
+        System.out.println("Best nonce: " + bestNonce + " with score: " + score);
         return (bestNonce + ":" + score);
     }
 
@@ -249,7 +296,7 @@ public class Certificate
             }
             if (score < 0)
             {
-                /*Negative numbers mean the most significant bit (left-most-bit) is a 1. That's big. Not small. So it shouldn't be negative.
+                /*Negative numbers mean the most significant bit (left-most-bit) is a 1. That's big, not small. So it shouldn't be negative.
                 As explained above in excruciating detail (see the comment in getMinCertificateScoreWithNonce() for more info) difficulties with a starting 1 are worthless. */
                 score = Long.MAX_VALUE; 
             }

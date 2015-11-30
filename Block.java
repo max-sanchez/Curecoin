@@ -36,7 +36,7 @@ public class Block
     public long minerSignatureIndex;
 
     /**
-     * Constructor for Block object. A block object is made for any confirmed or potential network block, and requires all pieces of data in this constructur
+     * Constructor for Block object. A block object is made for any confirmed or potential network block, and requires all pieces of data in this constructor
      * to be a valid network block. The timestamp is the result of the miner's initial call to System.currentTimeMillis(). When peers are receiving new blocks
      * (synced with the network, not catching up) they will refuse any blocks that are more than 2 hours off their internal adjusted time. This makes difficulty
      * malleability impossible in the long-run, ensures that timestamps are reasonably accurate, etc. As a result, any clients far off from the true network time
@@ -104,6 +104,17 @@ public class Block
         {
             e.printStackTrace();
         }
+    }
+    
+    /**
+     * Determines whether the block is PoW or not. Blocks that are not PoW (as in, PoS) have a certificate 
+     * filled with zeros. 
+     * 
+     * @return Whether the block is a PoW block or not
+     */
+    public boolean isPoWBlock()
+    {
+    	return certificate.isPoWCertificate();
     }
 
     /**
@@ -212,10 +223,11 @@ public class Block
     public boolean validateBlock(Blockchain blockchain)
     {
         System.out.println("Validating block " + blockNum);
+        System.out.println("Difficulty: " + difficulty);
         if (difficulty == 100000)
         {
         	// No certificate validation required, certificate is simply filled with zeros.
-        	if (winningNonce > difficulty)
+        	if (winningNonce > certificate.maxNonce)
         	{
         		return false; // PoS difficulty exceeded
         	}
@@ -224,13 +236,29 @@ public class Block
         		// No PoS blocks allowed before block 500
         		return false;
         	}
-        	for (int i = blockNum; i > blockNum - 500; i--)
+        	
+        	// Address can not have mined a PoS block or sent a transaction in the last 50 blocks
+        	for (int i = blockNum - 1; i > blockNum - 50; i--)
         	{
-        		if (blockchain.getBlock(i).getMiner().equals(certificate.redeemAddress))
+        		if (!blockchain.getBlock(i).isPoWBlock()) // Then PoS block
         		{
-        			return false; // Address has sent coins in the last 500 blocks!
+            		if (blockchain.getBlock(i).getMiner().equals(certificate.redeemAddress))
+            		{
+            			return false; // Address has mined PoS block too recently!
+            		}
+        		}
+        		ArrayList<String> transactions = blockchain.getBlock(i).getTransactionsInvolvingAddress(certificate.redeemAddress);
+        		for (String transaction : transactions)
+        		{
+        			if (transaction.split(":")[0].equals(certificate.redeemAddress))
+        			{
+        				return false; // Address has sent coins too recently!
+        			}
         		}
         	}
+        	
+        	
+        	
         	try
         	{
 	        	String transactionsString = "";
@@ -299,7 +327,7 @@ public class Block
 	                    }
 	                    long inputAmount = Long.parseLong(transactionParts[1]);
 	                    long outputAmount = 0L;
-	                    for (int j = 3; j < transactionParts.length - 2; j+=2) //Element 3 (4th element) and each subsequent odd-numbered index up to transactionParts should be an output amount.
+	                    for (int j = 3; j < transactionParts.length - 2; j+=2) //Element #3 (4th element) and each subsequent odd-numbered index up to transactionParts should be an output amount.
 	                    {
 	                        outputAmount += Long.parseLong(transactionParts[j]);
 	                    }
@@ -317,7 +345,7 @@ public class Block
 	                    if (!MerkleAddressUtility.verifyMerkleSignature(transactionData, transactionParts[transactionParts.length - 2], transactionParts[0], Long.parseLong(transactionParts[transactionParts.length - 1])))
 	                    {
 	                        System.out.println("Error validating block: signature does not match!");
-	                        return false; //Siganture doesn't match
+	                        return false; //Signature doesn't match
 	                    }
 	                } catch (Exception e) //Likely an error parsing a Long or performing some String manipulation task. Maybe array bounds exceptions.
 	                {
@@ -326,7 +354,7 @@ public class Block
 	                }
 	            }
         	} catch (Exception e) { }
-                //
+                // PoS block appears to be formatted correctly
         	return true;
         }
         else if (difficulty == 150000) // PoW block

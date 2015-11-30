@@ -26,7 +26,6 @@ public class CurecoinDatabaseMaster
      */
     public boolean addBlock(Block block)
     {
-        //blockchain.tryBlockQueue();
         return blockchain.addBlock(block, false);
     }
 

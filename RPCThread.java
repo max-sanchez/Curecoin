@@ -41,7 +41,7 @@ public class RPCThread extends Thread
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             String input = "";
-            out.println("Curecoin 2.0.0a3 daemon RPC");
+            out.println("Curecoin 2.0.0a5 daemon RPC");
             while ((input = in.readLine()) != null)
             {
                 if (input.equalsIgnoreCase("HELP"))

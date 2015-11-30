@@ -10,19 +10,19 @@ import java.awt.*;
 import java.util.*;
 
 /**
- * Welcome to the Curecoin 2.0.0a3 source code! MainClass stitches all of the separate components together to make everything work.
+ * Welcome to the Curecoin 2.0.0a5 source code! MainClass stitches all of the separate components together to make everything work.
  * Quick overview of the program's structure:
  * CurecoinDatabaseManager handles all database-related workloads, such as storing/adding blocks, account balance lookups, etc.
  * PendingTransactionContainer is simply a glorified ArrayList<String> to hold pending transactions.
  * PeerNetwork handles all P2P networking, delegating network workloads to PeerThread, which delegates to InputThread and OutputThread.
- * RPC handles all RPC calls. At ths point, RPC holds the most recent RPC call in a String, and MainClass is expected to loop quickly enough
+ * RPC handles all RPC calls. At this point, RPC holds the most recent RPC call in a String, and MainClass is expected to loop quickly enough
  * to grab RPC calls and plop the appropriate response into a object variable. 
  */
 public class MainClass
 {
     public static void main(String[] args)
     {
-        // launch();
+        launch();
         //Start of the program, initialize Database object
         CurecoinDatabaseMaster databaseMaster = new CurecoinDatabaseMaster("database");
         PendingTransactionContainer pendingTransactionContainer = new PendingTransactionContainer(databaseMaster);
@@ -42,9 +42,6 @@ public class MainClass
                 /*
                  * In future networks, these will route to servers running the daemon. For now, it's just the above IP.
                  */
-                
-                //out.println("2.curecoinmirror.com:8015");
-                //out.println("3.curecoinmirror.com:8015");
                 out.close();
             } catch (Exception e)
             {
@@ -68,7 +65,6 @@ public class MainClass
         {
             e.printStackTrace();
         }
-        //peerNetwork.connectToPeer("127.0.0.1", 8125);
         peerNetwork.broadcast("REQUEST_NET_STATE");
         int topBlock = 0;
         ArrayList<String> allBroadcastTransactions = new ArrayList<String>();
@@ -115,7 +111,7 @@ public class MainClass
                  * For now, this is done to MAKE SURE everyone is on the same page with block/transaction propagation.
                  * In the future, much smarter algorithms for routing, perhaps sending "have you seen xxx transaction" or similar will be used.
                  * No point in sending 4 KB when a 64-byte message (or less) could check to make sure a transaction hasn't already been sent.
-                 * Not wanting to complicate 2.0.0a3, there are no fancy algorithms or means of telling if peers have already heard the news you are going to deliver.
+                 * Not wanting to complicate 2.0.0a5, there are no fancy algorithms or means of telling if peers have already heard the news you are going to deliver.
                  */
                 for (int j = 0; j < input.size(); j++)
                 {
@@ -390,6 +386,170 @@ public class MainClass
                             rpcAgent.rpcThreads.get(i).response = "Non-valid transaction.";
                         }
                     }
+                    else if (parts[0].equals("trypos"))
+                    {
+                        rpcAgent.rpcThreads.get(i).request = null;
+                        /*
+                         * In order to attempt a PoS block, we need to check a few conditions. These will, of course,
+                         * also be verified by the network in order to ensure the PoS block is valid.
+                         * 
+                         * Conditions:
+                         * 1.) Current address hasn't mined any PoS blocks in the last 50 blocks
+                         * 2.) Current address hasn't sent any transactions in the last 50 blocks
+                         * 
+                         * The number of coins CURRENTLY in the address acts as the number of possible "nonces" to try.
+                         * As such, this version of PoS could be abused by sending coins to the address right before it stakes.
+                         * Since this is a tech demo of a possible PoS model on testnet, this isn't important, but the final
+                         * version of PoS will only consider the coins that were in the address before the previous 50 blocks.
+                         * 
+                         * One issue that comes up when only part of the blockchain is stored is being unable to verify this
+                         * initial balance. As such, a 'thin client' would simply have to trust that, when receiving a block
+                         * during catchup mode (as all clients will store enough blocks to verify CURRENT PoS blocks, aka ones mined
+                         * while the client is running) will simply have to trust that the rest of the network properly verified
+                         * this balance. Full nodes will be able to perform complete validation routines. In effect, full nodes
+                         * will maintain some sanity, but given the nature of jigsaw-blockchains where each block fits ONLY on the
+                         * previous, in order for a PoS block to be rejected in catchup mode, the entire blockchain after that point
+                         * would have to be invalidated.
+                         * 
+                         * In the current version, the submitted balance is simply trusted if the client is in catchup mode.
+                         */
+
+                    	// Address can not have mined a PoS block or sent a transaction in the last 50 blocks
+
+                        String PoSAddress = addressManager.getDefaultAddress();
+                        
+                        boolean conditionsMet = true;
+                        
+                    	for (int j = databaseMaster.getBlockchainLength() - 1; j > databaseMaster.getBlockchainLength() - 50; j--)
+                    	{
+                    		if (!databaseMaster.getBlock(j).isPoWBlock()) // Then PoS block
+                    		{
+                        		if (databaseMaster.getBlock(j).getMiner().equals(PoSAddress))
+                        		{
+                        			// Address has mined PoS block too recently!
+                                    rpcAgent.rpcThreads.get(i).response = "A PoS block was mined too recently: " + j;
+                                    conditionsMet = false;
+                        		}
+                    		}
+                    		ArrayList<String> transactions = databaseMaster.getBlock(i).getTransactionsInvolvingAddress(PoSAddress);
+                    		for (String transaction : transactions)
+                    		{
+                    			if (transaction.split(":")[0].equals(PoSAddress))
+                    			{
+                    				// Address has sent coins too recently!
+                                    rpcAgent.rpcThreads.get(i).response = "A PoS block was mined too recently: " + j;
+                                    conditionsMet = false;
+                    			}
+                    		}
+                    	}
+                        
+                    	if (conditionsMet)
+	                    {
+                    		System.out.println("Last block: " + databaseMaster.getBlockchainLength());
+                    		System.out.println("That block's hash: " + databaseMaster.getBlock(databaseMaster.getBlockchainLength() - 1).blockHash);
+	                        String previousBlockHash = databaseMaster.getBlock(databaseMaster.getBlockchainLength() - 1).blockHash;
+	                        long currentBalance = databaseMaster.getAddressBalance(PoSAddress);
+	                        Certificate certificate = new Certificate(PoSAddress, "0", (int)currentBalance * 100, "0", databaseMaster.getBlockchainLength() + 1, previousBlockHash, 0, "0,0");
+	
+	                        String[] scoreAndNonce = certificate.getMinCertificateScoreWithNonce().split(":");
+	                        int bestNonce = Integer.parseInt(scoreAndNonce[0]);
+	                        long lowestScore = Long.parseLong(scoreAndNonce[1]);
+	                        long target = Long.MAX_VALUE/(100000/2); // Hard-coded PoS difficulty for this test
+	                        if (lowestScore < target)
+	                        {
+	                            try //Some stuff here may throw exceptions
+	                            {
+	                                //Great, certificate is a winning certificate!
+	                                //Gather all of the transactions from pendingTransactionContainer, check them.
+	                                ArrayList<String> allPendingTransactions = pendingTransactionContainer.pendingTransactions;
+	                                System.out.println("Inital pending pool size: " + allPendingTransactions.size());
+	                                allPendingTransactions = TransactionUtility.sortTransactionsBySignatureIndex(allPendingTransactions);
+	                                System.out.println("Pending pool size after sorting: " + allPendingTransactions.size());
+	                                //All transactions have been ordered, and tested for validity. Now, we need to check account balances to make sure transactions are valid. 
+	                                //As all transactions are grouped by address, we'll check totals address-by-address
+	                                ArrayList<String> finalTransactionList = new ArrayList<String>();
+	                                for (int j = 0; j < allPendingTransactions.size(); j++)
+	                                {
+	                                    String transaction = allPendingTransactions.get(j);
+	                                    String address = transaction.split(";")[0];
+	                                    //Begin at 0L, and add all outputs to exitBalance
+	                                    long exitBalance = 0L;
+	                                    long originalBalance = databaseMaster.getAddressBalance(address);
+	                                    //Used to keep track of the offset from j while still working on the same address, therefore not going through the entire for-loop again
+	                                    int counter = 0;
+	                                    //Previous signature count for an address--in order to ensure transactions use the correct indices
+	                                    long previousSignatureCount = databaseMaster.getAddressSignatureIndex(address);
+	                                    boolean foundNewAddress = false;
+	                                    while (!foundNewAddress && j + counter < allPendingTransactions.size())
+	                                    {
+	                                        transaction = allPendingTransactions.get(j + counter);
+	                                        if (!address.equals(transaction.split(";")[0]))
+	                                        {
+	                                            foundNewAddress = true;
+	                                            address = transaction.split(";")[0];
+	                                            j = j + counter;
+	                                        }
+	                                        else
+	                                        {
+	                                            exitBalance += Long.parseLong(transaction.split(";")[1]); //Element at index 1 (2nd element) is the full output amount!
+	                                            if (exitBalance <= originalBalance && previousSignatureCount + 1 == Long.parseLong(transaction.split(";")[transaction.split(";").length - 1])) //Transaction looks good!
+	                                            {
+	                                                //Add seemingly-good transaction to the list, and increment previousSignatureCount for signature order assurance. 
+	                                                finalTransactionList.add(transaction);
+	                                                System.out.println("While making block, added transaction " + transaction);
+	                                                previousSignatureCount++;
+	                                            }
+	                                            else
+	                                            {
+	                                                System.out.println("Transaction failed final validation...");
+	                                                System.out.println("exitBalance: " + exitBalance);
+	                                                System.out.println("originalBalance: " + originalBalance);
+	                                                System.out.println("previousSignatureCount: " + previousSignatureCount);
+	                                                System.out.println("signature count of new tx: " + Long.parseLong(transaction.split(";")[transaction.split(";").length - 1]));
+	                                            }
+	                                            //Counter keeps track of the sub-2nd-layer-for-loop incrementation along the ArrayList. It's kinda 3D.
+	                                            counter++;
+	                                        }
+	                                    }
+	                                }
+	                                //We have the transaction list; now we need to assemble the block. I moved this code into its own method, because it would be ugly here. That method handles steps 5, 6, and 7.
+	                                //databaseMaster.getBlockchainLength() doesn't have one added to it to account for starting from 0!
+	                                String fullBlock = BlockGenerator.compileBlock(System.currentTimeMillis(), databaseMaster.getBlockchainLength(), databaseMaster.getLatestBlock().blockHash, 100000 /*fixed testnet PoS difficulty for now...*/, bestNonce, "0000000000000000000000000000000000000000000000000000000000000000", finalTransactionList, certificate, certificate.redeemAddress, addressManager.getDefaultPrivateKey(), databaseMaster.getAddressSignatureIndex(certificate.redeemAddress));
+	                                
+	                                System.out.println("Compiled PoS block: " + fullBlock);
+	                                
+	                                //We finally have the full block. Now to submit it to ourselves...
+	                                Block toAdd = new Block(fullBlock);
+	                                boolean success = databaseMaster.addBlock(toAdd);
+	                                
+	                                System.out.println("Block add success: " + success);
+	                                
+	                                if (success) //The block appears legitimate to ourselves! Send it to others!
+	                                {
+	                                    peerNetwork.broadcast("BLOCK " + fullBlock);
+	                                    System.out.println("PoS Block added to network successfully!");
+	                                    pendingTransactionContainer.reset(); //Any transactions left in pendingTransactionContainer that didn't get submitted into the block should be cleared anyway--they probably aren't valid for some reason, likely balance issues.
+	                                    addressManager.resetDefaultAddressIndexOffset();
+	                                }
+	                                else
+	                                {
+	                                    System.out.println("Block was not added successfully! :(");
+	                                }
+	                                rpcAgent.rpcThreads.get(i).response = "Successfully submitted block! \nCertificate earned score " + lowestScore + "\nWhich is below target " + target + " so earned PoS!";
+	                            } catch (Exception e)
+	                            {
+	                                rpcAgent.rpcThreads.get(i).response = "Failure to construct certificate!";
+	                                System.out.println("Constructing certificate failed!");
+	                                e.printStackTrace();
+	                            }
+	                        }
+	                        else
+	                        {
+	                            rpcAgent.rpcThreads.get(i).response = "Pos mining failed with target score " + lowestScore + "\nWhich is above target " + target;
+	                        } 
+	                    }
+                        
+                    }
                     else if (parts[0].equals("submitcert"))
                     {
                         rpcAgent.rpcThreads.get(i).request = null;
@@ -399,7 +559,7 @@ public class MainClass
                          * If 1. shows a difficulty above the network difficulty (below the target), proceed with creating a block:
                          * 2.) Gather all transactions from the pending transaction pool. Test all for validity. Test all under a max balance test.
                          * 3.) Put correct transactions in any arbitrary order, except for multiple transactions from the same address, which are ordered by signature index.
-                         * 4.) Input the ledger hash (In 2.0.0a3, this is 0000000000000000000000000000000000000000000000000000000000000000, as ledger hashing isn't fully implemented)
+                         * 4.) Input the ledger hash (In 2.0.0a5, this is 0000000000000000000000000000000000000000000000000000000000000000, as ledger hashing isn't fully implemented)
                          * 5.) Hash the block
                          * 6.) Sign the block
                          * 7.) Return full block
@@ -470,7 +630,7 @@ public class MainClass
                                 }
                                 //We have the transaction list; now we need to assemble the block. I moved this code into its own method, because it would be ugly here. That method handles steps 5, 6, and 7.
                                 //databaseMaster.getBlockchainLength() doesn't have one added to it to account for starting from 0!
-                                String fullBlock = BlockGenerator.compileBlock(System.currentTimeMillis(), databaseMaster.getBlockchainLength(), databaseMaster.getLatestBlock().blockHash, databaseMaster.getLatestBlock().difficulty, bestNonce, "0000000000000000000000000000000000000000000000000000000000000000", finalTransactionList, certificate, certificate.redeemAddress, addressManager.getDefaultPrivateKey(), databaseMaster.getAddressSignatureIndex(certificate.redeemAddress));
+                                String fullBlock = BlockGenerator.compileBlock(System.currentTimeMillis(), databaseMaster.getBlockchainLength(), databaseMaster.getLatestBlock().blockHash, 150000, bestNonce, "0000000000000000000000000000000000000000000000000000000000000000", finalTransactionList, certificate, certificate.redeemAddress, addressManager.getDefaultPrivateKey(), databaseMaster.getAddressSignatureIndex(certificate.redeemAddress));
                                 //We finally have the full block. Now to submit it to ourselves...
                                 Block toAdd = new Block(fullBlock);
                                 boolean success = databaseMaster.addBlock(toAdd);
@@ -541,17 +701,19 @@ public class MainClass
 
     public static void launch()
     {
+    	System.out.println("Launching...");
         Console console = System.console(); //Get a system console object
         if (console != null) //If the application has a console
         {
             File f = new File("launch.bat");
             if (f.exists())
             {
-                //f.delete(); //delete bat file if it exists
+                f.delete(); //delete bat file if it exists
             }
         } 
         else if (!GraphicsEnvironment.isHeadless()) //Application doesn't have a console, let's give it one!
         {
+        	System.out.println("Giving console");
             String os = System.getProperty("os.name").toLowerCase(); //Get OS
             if (os.contains("indows")) //If OS is a windows OS
             { 
@@ -560,7 +722,7 @@ public class MainClass
                     File JarFile = new File(MainClass.class.getProtectionDomain().getCodeSource().getLocation().toURI());//Get the absolute location of the .jar file
                     PrintWriter out = new PrintWriter(new File("launch.bat")); //Get a PrintWriter object to make a batch file
                     out.println("@echo off"); //turn echo off for batch file
-                    out.println("title Curecoin 2.0.0a3"); 
+                    out.println("title Curecoin 2.0.0a5"); 
                     out.println("java -Xmx500M -jar \"" + JarFile.getPath() + "\"");
                     out.println("start /b \"\" cmd /c del \"%~f0\"&exit /b");
                     out.close(); //saves file

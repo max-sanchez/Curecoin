@@ -18,16 +18,16 @@ import java.util.*;
  * As the blockchain has the most up-to-date information about blockchain data, it makes perfect sense for the ledger, which is based purely on the blockchain,
  * to be managed by the Blockchain object. Initial plans were to have separate Blockchain objects for each fork in a chainbut the overhead of cloning Blockchain
  * objects seemed unwarranted. Significant optimization still needs to be done on the fork management--climbing all the way down the shorter chain and back up
- * the longer chain is NOT a permanant solution, and I hope to have respectable fork management overhead by 2.0.0a2. 
+ * the longer chain is NOT a permanant solution, and I hope to have respectable fork management overhead by 2.0.0a8/9. 
  * 
  * Additionally, there is no need to store identical blocks between multiple forks. The overhead of a fork suddenly requiring double the blockchain storage is
- * unacceptable. It works, I think. But unacceptable for production code, so that'll certainly change, hopefully by 2.0.0a2 or 2.0.0a3, depending on my schedule.
+ * unacceptable. It works, I think. But unacceptable for production code, so that'll certainly change, hopefully by 2.0.0a6/7, depending on my schedule.
  * 
  * As blocks are added to the blockchain, the ledger is updated. While working beautifully in small-scale testing, I'm sure the signature count synchronization
  * between signed transactions and blocks will trip up at some point, and send the Blockchain object into either a loop of dispair, or an irrecoverable error.
  * Either is equally frightening. 
  * 
- * Fault tolerance with desynchronization between ledger and blockchain for signature accounts will be a 2.0.0a3 or 2.0.0a4 feature. I've gotta think long and 
+ * Fault tolerance with desynchronization between ledger and blockchain for signature accounts will be a 2.0.0a6/7 feature. I've gotta think long and 
  * hard about the best approaches that don't compromise security in the name of fault-tolerance, while remaining usable, reliable, and fast. 
  * 
  * You'll notice a loop which appears to retry transactions up to 10,000 times. Transactions must be executed in order--two transactions from the same address
@@ -201,6 +201,7 @@ public class Blockchain
             }
             if (!block.validateBlock(this))
             {
+            	System.out.println("Block validation failed!");
                 return false; //Block is not a valid block. Don't add it!
             }
             //Block looks fine on its own--we don't know how it's going to play with the chain. If the block's number is larger than the largest chain + 1, we'll put the block in a queue to attempt to add later.
@@ -270,7 +271,7 @@ public class Blockchain
             {
                 if (chains.get(i).get(chains.get(i).size() - 1).blockHash.equals(block.blockHash))
                 {
-                    //Duplicate block; block has already been added. This happens all the time, as multiple peers all broadcast the same block.
+                    //Duplicate block; block has already been added. This happens all the time, as multiple peers can all broadcast the same block.
                     System.out.println("Duplicate block received from peer");
                     return false;
                 }
@@ -279,6 +280,10 @@ public class Blockchain
             for (int i = 0; i < chains.size(); i++)
             {
                 //Block numbering starts at 0
+            	System.out.println("Previous block hash according to chain: " + chains.get(i).get(chains.get(i).size() - 1).blockHash);
+            	System.out.println("Previous block hash according to added block: " + block.previousBlockHash);
+            	System.out.println("Selected chain size: " + chains.get(i).size());
+            	System.out.println("Should be equal to block num: " + block.blockNum);
                 if (chains.get(i).get(chains.get(i).size() - 1).blockHash.equals(block.previousBlockHash) && chains.get(i).size() == block.blockNum) //Great! New block stacks nicely onto one of the other blocks.
                 {
                     chains.get(i).add(block);
@@ -299,7 +304,7 @@ public class Blockchain
                                 ledgerManager.adjustAddressBalance(largestChain.get(j).certificate.redeemAddress, -100); //Reverse mining income...
                                 ledgerManager.adjustAddressSignatureCount(largestChain.get(j).certificate.redeemAddress, -1);
                             }
-                            //The ledger is completely empty, basically. Good job. Efficiency at its finest. I WILL FIX THIS
+                            //The ledger is completely empty, basically. Good job. Efficiency at its finest. Will be fixed during upcoming refactoring.
                             for (int j = 0; j < chains.get(i).size(); j++)
                             {
                                 //We can't directly assign transactionsToApply to block.transactions as we are going to edit it, and we don't want to delete transactions from the actual block.

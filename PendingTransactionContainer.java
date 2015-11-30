@@ -132,7 +132,7 @@ public class PendingTransactionContainer
     /**
      * This method is the most useful method in this class--it allows the mass removal of all transactions from the pending transaction pool that were included
      * in a network block, all in one call. The returned boolean is not currently utilized in MainClass, proper handling of blocks with transaction issues will be addressed
-     * in a future alpha, probably 2.0.0a3 given my schedule.
+     * in a future alpha, probably 2.0.0a6/7 given my schedule.
      * 
      * @param rawBlock The raw String representing the block holding transactions to remove
      * 
