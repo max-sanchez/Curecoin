@@ -164,7 +164,7 @@ public class MainClass
                                 //Block has not been previously received, so it will be added to the blockchain (hopefully)
                                 System.out.println("Adding new block from network!");
                                 System.out.println("Block: ");
-                                System.out.println(parts[1]);
+                                System.out.println(parts[1].substring(0, 30) + "...");
                                 allBroadcastBlocks.add(parts[1]);
                                 Block blockToAdd = new Block(parts[1]);
                                 if (databaseMaster.addBlock(blockToAdd) && !catchupMode)

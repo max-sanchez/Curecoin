@@ -144,7 +144,10 @@ public class Block
         System.out.println("Block parts: " + parts.length);
         for (int i = 0; i < parts.length; i++)
         {
-            System.out.println("     " + i + ": " + parts[i]);
+        	String toPrint = parts[i];
+        	if (parts[i].length() > 40)
+        		toPrint = parts[i].substring(0, 20) + "..." + parts[i].substring(parts[i].length() - 20);
+            System.out.println("     " + i + ": " + toPrint);
         }
         String firstPart = parts[0].replace("{", "");
         firstPart = firstPart.replace("}", "");
